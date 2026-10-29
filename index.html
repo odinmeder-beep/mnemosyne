@@ -31,12 +31,31 @@
     <p id="banner" class="banner" role="alert" hidden></p>
 
     <section id="view-list" hidden>
+      <div id="list-tools" hidden>
+        <input id="search" type="search" placeholder="搜尋標題、摘要、備註、分類或標籤" autocomplete="off" enterkeyhint="search">
+        <div class="sort-row">
+          <label for="sort">排序</label>
+          <select id="sort">
+            <option value="newest">最新</option>
+            <option value="oldest">最舊</option>
+            <option value="title">標題</option>
+          </select>
+        </div>
+        <p class="hint filter-label">平台</p>
+        <div id="platform-filters" class="chips"></div>
+        <p class="hint filter-label">分類</p>
+        <div id="category-filters" class="chips"></div>
+        <div id="active-filters" class="chips" hidden></div>
+        <p id="result-count" class="hint"></p>
+      </div>
       <p id="list-status" class="hint" role="status" hidden></p>
       <div id="empty" class="empty" hidden>
-        <p>還沒有收藏。</p>
+        <p id="empty-text">還沒有收藏。</p>
         <button type="button" id="empty-add">新增第一則</button>
+        <button type="button" id="clear-filters" class="ghost" hidden>清除條件</button>
       </div>
       <div id="cards"></div>
+      <button type="button" id="show-more" class="ghost show-more" hidden>顯示更多</button>
     </section>
 
     <section id="view-form" hidden>
@@ -44,8 +63,10 @@
       <form id="item-form">
         <label for="item-url">網址</label>
         <input id="item-url" name="url" type="url" inputmode="url" autocomplete="off" spellcheck="false" placeholder="https://" required>
-        <button type="button" id="preview-btn" class="ghost">讀取標題</button>
-        <p id="preview-status" class="hint" role="status" hidden></p>
+        <div class="url-actions">
+          <button type="button" id="preview-btn" class="ghost">讀取標題</button>
+        </div>
+        <p id="preview-status" class="hint field-note" role="status" hidden></p>
 
         <label for="item-title">標題</label>
         <input id="item-title" name="title" type="text" autocomplete="off">
@@ -62,7 +83,7 @@
 
         <label for="item-tags">標籤</label>
         <input id="item-tags" name="tags" type="text" placeholder="閱讀, 稍後" autocomplete="off">
-        <p class="hint">用逗號分隔</p>
+        <p class="hint field-note">用逗號分隔</p>
 
         <p id="form-message" class="banner" role="status" hidden></p>
         <div class="form-actions">
