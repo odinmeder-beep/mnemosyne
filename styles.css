@@ -119,6 +119,18 @@ textarea { resize: vertical; }
 
 #toggle-key { margin-top: 0.75rem; }
 
+details.advanced { margin-top: 1.15rem; }
+
+details.advanced:not([open]) > :not(summary) { display: none; }
+
+details.advanced summary {
+  cursor: pointer;
+  color: var(--muted);
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+}
+
 .url-actions { margin-top: 0.85rem; }
 
 .field-note { margin-top: 0.55rem; }
