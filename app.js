@@ -44,6 +44,8 @@ var navBack = document.getElementById('nav-back');
 var navAdd = document.getElementById('nav-add');
 var navSettings = document.getElementById('nav-settings');
 var banner = document.getElementById('banner');
+var bannerText = document.getElementById('banner-text');
+var bannerEdit = document.getElementById('banner-edit');
 var viewList = document.getElementById('view-list');
 var viewForm = document.getElementById('view-form');
 var viewSettings = document.getElementById('view-settings');
@@ -232,12 +234,62 @@ function parseTags(value) {
 function showBanner(err) {
   banner.hidden = false;
   banner.className = 'banner';
-  banner.textContent = errorMessage(err);
+  bannerText.textContent = errorMessage(err);
+  bannerEdit.hidden = true;
 }
 
 function clearBanner() {
   banner.hidden = true;
-  banner.textContent = '';
+  bannerText.textContent = '';
+  bannerEdit.hidden = true;
+}
+
+function showShareNotice(text, item, ok) {
+  banner.hidden = false;
+  banner.className = ok ? 'banner ok' : 'banner';
+  bannerText.textContent = text;
+  if (item && item.id) {
+    bannerEdit.hidden = false;
+    bannerEdit.onclick = function () {
+      location.hash = '#/edit/' + encodeURIComponent(item.id);
+    };
+  } else {
+    bannerEdit.hidden = true;
+    bannerEdit.onclick = null;
+  }
+}
+
+function saveSharedNow() {
+  var shared = pendingShare();
+  if (!shared) return;
+  sessionStorage.removeItem(SHARE_STORAGE);
+  showList();
+  if (!shared.url) {
+    showShareNotice('這次分享裡沒有找到連結。', null, false);
+    return;
+  }
+  callApi('add', {
+    url: shared.url,
+    note: '',
+    category: '',
+    tags: [],
+  }).then(function (result) {
+    if (result.duplicate) {
+      showList();
+      showShareNotice('這個連結已經收藏過了', null, true);
+      return;
+    }
+    var saved = result.item || { url: shared.url };
+    if (saved.id) {
+      items = [saved].concat(items.filter(function (entry) { return entry.id !== saved.id; }));
+      itemsLoaded = true;
+    }
+    showList();
+    showShareNotice('已收藏 ' + (saved.title || saved.url || ''), saved, true);
+  }).catch(function (err) {
+    showList();
+    showBanner(err);
+  });
 }
 
 function setHeader() {
@@ -1495,7 +1547,7 @@ if (!hasSettings()) {
   if (location.hash !== '#/settings') location.hash = '#/settings';
   else renderRoute();
 } else if (pendingShare()) {
-  openSharedAdd();
+  saveSharedNow();
 } else if (!location.hash || location.hash === '#') {
   location.hash = '#/';
 } else {
