@@ -4,6 +4,19 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#0f6e6b">
+  <script>
+    (function () {
+      var choice = 'system';
+      try {
+        var saved = localStorage.getItem('mnemosyne.theme');
+        if (saved === 'dark' || saved === 'light' || saved === 'system') choice = saved;
+      } catch (err) {}
+      var dark = choice === 'dark' || (choice !== 'light' && matchMedia('(prefers-color-scheme: dark)').matches);
+      document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
+      var meta = document.querySelector('meta[name="theme-color"]');
+      if (meta) meta.setAttribute('content', dark ? '#141210' : '#0f6e6b');
+    })();
+  </script>
   <meta name="description" content="Mnemosyne，個人連結收藏。">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
@@ -101,6 +114,12 @@
     <section id="view-settings" hidden>
       <h2>設定</h2>
       <p class="hint">貼上金鑰。它只存在這台裝置，不會放進網址列。</p>
+      <fieldset class="theme-choice">
+        <legend>外觀</legend>
+        <label><input type="radio" name="theme" value="dark"> 深色</label>
+        <label><input type="radio" name="theme" value="light"> 淺色</label>
+        <label><input type="radio" name="theme" value="system" checked> 跟隨系統</label>
+      </fieldset>
       <form id="settings-form" autocomplete="off">
         <label for="secret-key">金鑰</label>
         <input id="secret-key" name="secret-key" type="password" spellcheck="false" autocomplete="off" required>

@@ -900,6 +900,34 @@ function showSettings() {
     settingsMessage.className = 'banner ok';
     settingsMessage.textContent = '貼上金鑰後，會打開這次分享的新增頁。';
   }
+  syncThemeControls();
+}
+
+var THEME_KEY = 'mnemosyne.theme';
+
+function themeChoice() {
+  var saved = localStorage.getItem(THEME_KEY);
+  if (saved === 'dark' || saved === 'light' || saved === 'system') return saved;
+  return 'system';
+}
+
+function themeIsDark(choice) {
+  if (choice === 'dark') return true;
+  if (choice === 'light') return false;
+  return window.matchMedia('(prefers-color-scheme: dark)').matches;
+}
+
+function applyTheme(choice) {
+  var dark = themeIsDark(choice);
+  document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
+  var meta = document.querySelector('meta[name="theme-color"]');
+  if (meta) meta.setAttribute('content', dark ? '#141210' : '#0f6e6b');
+}
+
+function syncThemeControls() {
+  var choice = themeChoice();
+  var radios = document.querySelectorAll('input[name="theme"]');
+  for (var i = 0; i < radios.length; i++) radios[i].checked = radios[i].value === choice;
 }
 
 function renderRoute() {
@@ -1333,6 +1361,17 @@ confirmDeleteBtn.addEventListener('click', function () {
 
 localStorage.removeItem('mnemosyne.execUrl');
 rememberShareFromLocation();
+
+document.querySelector('.theme-choice').addEventListener('change', function (event) {
+  var value = event.target && event.target.value;
+  if (value !== 'dark' && value !== 'light' && value !== 'system') return;
+  localStorage.setItem(THEME_KEY, value);
+  applyTheme(value);
+});
+window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', function () {
+  if (themeChoice() === 'system') applyTheme('system');
+});
+syncThemeControls();
 
 window.addEventListener('hashchange', renderRoute);
 
