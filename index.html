@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="zh-Hant-TW">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0f6e6b">
+  <meta name="description" content="Mnemosyne，個人連結收藏。">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Mnemosyne">
+  <title>Mnemosyne</title>
+  <link rel="icon" href="./icons/icon-192.png">
+  <link rel="apple-touch-icon" href="./icons/icon-192.png">
+  <link rel="manifest" href="./manifest.json">
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <div>
+        <h1>Mnemosyne</h1>
+        <p class="sub">智祥的收藏</p>
+      </div>
+      <div class="header-actions">
+        <button type="button" id="nav-back" class="ghost" hidden>返回</button>
+        <button type="button" id="nav-add" class="ghost" hidden>新增</button>
+        <button type="button" id="nav-settings" class="ghost">設定</button>
+      </div>
+    </header>
+
+    <p id="banner" class="banner" role="alert" hidden></p>
+
+    <section id="view-list" hidden>
+      <p id="list-status" class="hint" role="status" hidden></p>
+      <div id="empty" class="empty" hidden>
+        <p>還沒有收藏。</p>
+        <button type="button" id="empty-add">新增第一則</button>
+      </div>
+      <div id="cards"></div>
+    </section>
+
+    <section id="view-form" hidden>
+      <h2 id="form-heading">新增收藏</h2>
+      <form id="item-form">
+        <label for="item-url">網址</label>
+        <input id="item-url" name="url" type="url" inputmode="url" autocomplete="off" spellcheck="false" placeholder="https://" required>
+        <button type="button" id="preview-btn" class="ghost">讀取標題</button>
+        <p id="preview-status" class="hint" role="status" hidden></p>
+
+        <label for="item-title">標題</label>
+        <input id="item-title" name="title" type="text" autocomplete="off">
+
+        <label for="item-summary">摘要</label>
+        <textarea id="item-summary" name="summary" rows="3"></textarea>
+
+        <label for="item-note">備註</label>
+        <textarea id="item-note" name="note" rows="2"></textarea>
+
+        <label for="item-category">分類</label>
+        <input id="item-category" name="category" type="text" list="category-options" placeholder="選擇已有的，或輸入新的" autocomplete="off">
+        <datalist id="category-options"></datalist>
+
+        <label for="item-tags">標籤</label>
+        <input id="item-tags" name="tags" type="text" placeholder="閱讀, 稍後" autocomplete="off">
+        <p class="hint">用逗號分隔</p>
+
+        <p id="form-message" class="banner" role="status" hidden></p>
+        <div class="form-actions">
+          <button type="submit" id="save-btn">儲存</button>
+          <button type="button" id="form-delete" class="danger" hidden>刪除</button>
+        </div>
+      </form>
+    </section>
+
+    <section id="view-settings" hidden>
+      <h2>設定</h2>
+      <p class="hint">貼上 Apps Script 部署後的網址和金鑰。它們只存在這台裝置，不會放進網址列。</p>
+      <form id="settings-form" autocomplete="off">
+        <label for="exec-url">後端網址</label>
+        <textarea id="exec-url" name="exec-url" rows="3" spellcheck="false" autocomplete="off" required></textarea>
+        <label for="secret-key">金鑰</label>
+        <input id="secret-key" name="secret-key" type="password" spellcheck="false" autocomplete="off" required>
+        <button type="button" id="toggle-key" class="ghost">顯示金鑰</button>
+        <p id="settings-message" class="banner" role="status" hidden></p>
+        <div class="form-actions">
+          <button type="submit">儲存</button>
+          <button type="button" id="clear-settings" class="ghost" hidden>清除這台裝置上的設定</button>
+        </div>
+      </form>
+    </section>
+  </div>
+
+  <div id="confirm" class="confirm" hidden>
+    <div class="confirm-card" role="dialog" aria-modal="true" aria-labelledby="confirm-text">
+      <p id="confirm-text">要刪除這則收藏嗎？</p>
+      <p class="hint">刪除後不會留在清單裡。</p>
+      <div class="form-actions">
+        <button type="button" id="confirm-delete" class="danger">刪除</button>
+        <button type="button" id="confirm-cancel" class="ghost">取消</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="./app.js"></script>
+</body>
+</html>
