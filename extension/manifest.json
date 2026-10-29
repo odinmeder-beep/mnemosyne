@@ -1,0 +1,35 @@
+{
+  "manifest_version": 3,
+  "name": "Mnemosyne",
+  "description": "把目前的分頁存進 Mnemosyne",
+  "version": "1.0.0",
+  "action": {
+    "default_title": "存到 Mnemosyne",
+    "default_popup": "popup.html",
+    "default_icon": {
+      "192": "icons/icon-192.png"
+    }
+  },
+  "commands": {
+    "_execute_action": {
+      "suggested_key": {
+        "default": "Alt+Shift+S",
+        "mac": "Alt+Shift+S"
+      },
+      "description": "儲存目前的分頁"
+    }
+  },
+  "options_ui": {
+    "page": "options.html",
+    "open_in_tab": true
+  },
+  "permissions": ["storage", "activeTab"],
+  "host_permissions": [
+    "https://script.google.com/*",
+    "https://script.googleusercontent.com/*"
+  ],
+  "icons": {
+    "192": "icons/icon-192.png",
+    "512": "icons/icon-512.png"
+  }
+}

@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="zh-Hant-TW">
+<head>
+  <meta charset="utf-8">
+  <title>存到 Mnemosyne</title>
+  <link rel="stylesheet" href="extension.css">
+</head>
+<body>
+  <h1>存到 Mnemosyne</h1>
+  <p id="need-key" class="banner" hidden>
+    還沒有金鑰。
+    <button type="button" id="open-options" class="ghost">前往設定</button>
+  </p>
+  <form id="save-form" hidden>
+    <label for="url">網址</label>
+    <input id="url" name="url" type="url" inputmode="url" autocomplete="off" spellcheck="false" required>
+
+    <label for="title">標題</label>
+    <input id="title" name="title" type="text" autocomplete="off">
+
+    <p class="label" id="category-label">分類</p>
+    <input id="category-search" type="search" placeholder="搜尋分類" autocomplete="off" aria-labelledby="category-label">
+    <div id="categories" class="cat-list" role="group" aria-labelledby="category-label"></div>
+    <p id="category-status" class="hint" role="status"></p>
+
+    <label for="note">備註</label>
+    <textarea id="note" name="note" rows="2"></textarea>
+
+    <label for="tags">標籤</label>
+    <input id="tags" name="tags" type="text" placeholder="閱讀, 稍後" autocomplete="off">
+    <p class="hint">用逗號分隔</p>
+
+    <p id="message" class="banner" role="status" hidden></p>
+    <button type="submit" id="save">儲存</button>
+  </form>
+  <script src="popup.js"></script>
+</body>
+</html>
