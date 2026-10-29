@@ -26,6 +26,7 @@ var dateFormat = new Intl.DateTimeFormat('zh-Hant-TW', {
 
 var items = [];
 var itemsLoaded = false;
+var categories = [];
 var editingId = null;
 var useFormMeta = false;
 var pendingDelete = null;
@@ -68,7 +69,6 @@ var itemSummary = document.getElementById('item-summary');
 var itemNote = document.getElementById('item-note');
 var itemCategory = document.getElementById('item-category');
 var itemTags = document.getElementById('item-tags');
-var categoryOptions = document.getElementById('category-options');
 var previewBtn = document.getElementById('preview-btn');
 var previewStatus = document.getElementById('preview-status');
 var formMessage = document.getElementById('form-message');
@@ -109,6 +109,7 @@ function errorMessage(err) {
     unauthorized: '金鑰不正確。請到設定確認金鑰。',
     invalid_url: '請貼上以 http 或 https 開頭的網址。',
     not_found: '找不到這則收藏，可能已經刪除。',
+    duplicate: '已經有同名的分類。',
     not_setup: '試算表還沒建立。請在 Apps Script 執行 setup。',
     busy: '暫時忙碌，請再試一次。',
     network: '連不上後端。請檢查網址與網路。',
@@ -214,18 +215,92 @@ function clearFormMessage() {
   formMessage.className = 'banner';
 }
 
-function fillCategories() {
-  var names = [];
-  items.forEach(function (item) {
-    var name = item.category ? String(item.category).trim() : '';
-    if (name && names.indexOf(name) === -1) names.push(name);
+function refreshCategories() {
+  return callApi('listCategories').then(function (data) {
+    categories = Array.isArray(data.categories) ? data.categories : [];
+    return categories;
   });
-  names.sort();
-  categoryOptions.replaceChildren();
-  names.forEach(function (name) {
-    var option = document.createElement('option');
-    option.value = name;
-    categoryOptions.appendChild(option);
+}
+
+function orderedCategoryRows(query) {
+  var needle = String(query || '').trim().toLowerCase();
+  var byParent = {};
+  categories.forEach(function (cat) {
+    var name = cat && cat.name ? String(cat.name).trim() : '';
+    if (!name) return;
+    var parent = cat.parent ? String(cat.parent).trim() : '';
+    if (!byParent[parent]) byParent[parent] = [];
+    byParent[parent].push({ name: name, color: cat.color || '', parent: parent });
+  });
+  Object.keys(byParent).forEach(function (key) {
+    byParent[key].sort(function (a, b) { return a.name.localeCompare(b.name, 'zh-Hant'); });
+  });
+  function subtreeHasMatch(name, guard) {
+    if (guard > 8) return false;
+    if (!needle || name.toLowerCase().indexOf(needle) !== -1) return true;
+    var kids = byParent[name] || [];
+    for (var i = 0; i < kids.length; i++) {
+      if (subtreeHasMatch(kids[i].name, guard + 1)) return true;
+    }
+    return false;
+  }
+  var out = [];
+  function walk(parent, depth, guard) {
+    if (guard > 8) return;
+    (byParent[parent] || []).forEach(function (cat) {
+      if (needle && !subtreeHasMatch(cat.name, 0)) return;
+      out.push({ name: cat.name, color: cat.color, depth: depth });
+      walk(cat.name, depth + 1, guard + 1);
+    });
+  }
+  walk('', 0, 0);
+  return out;
+}
+
+function renderCategoryPicker() {
+  var chosenBox = document.getElementById('chosen-category');
+  var list = document.getElementById('category-list');
+  var search = document.getElementById('category-search');
+  if (!chosenBox || !list || !itemCategory) return;
+  var chosen = itemCategory.value.trim();
+  chosenBox.replaceChildren();
+  if (chosen) {
+    chosenBox.hidden = false;
+    var picked = document.createElement('button');
+    picked.type = 'button';
+    picked.className = 'cat-chip';
+    picked.textContent = chosen;
+    var pickedColor = colorFor(chosen) || '#3d8195';
+    picked.style.background = pickedColor;
+    picked.style.color = chipTextColor(pickedColor);
+    picked.addEventListener('click', function () {
+      itemCategory.value = '';
+      renderCategoryPicker();
+    });
+    chosenBox.appendChild(picked);
+  } else {
+    chosenBox.hidden = true;
+  }
+  var query = search ? search.value : '';
+  list.replaceChildren();
+  orderedCategoryRows(query).forEach(function (row) {
+    var button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'cat-row' + (row.name === chosen ? ' is-on' : '');
+    button.style.paddingLeft = (0.75 + row.depth * 1.15) + 'rem';
+    button.setAttribute('role', 'option');
+    button.setAttribute('aria-selected', row.name === chosen ? 'true' : 'false');
+    var dot = document.createElement('span');
+    dot.className = 'dot';
+    dot.style.background = row.color || '#90a4ae';
+    var label = document.createElement('span');
+    label.textContent = row.name;
+    button.append(dot, label);
+    button.addEventListener('click', function () {
+      itemCategory.value = itemCategory.value.trim() === row.name ? '' : row.name;
+      renderCategoryPicker();
+    });
+    list.appendChild(button);
   });
 }
 
@@ -316,7 +391,15 @@ function renderCard(item) {
   if (item.category) {
     var category = document.createElement('p');
     category.className = 'category';
-    category.textContent = '分類：' + item.category;
+    var chip = document.createElement('span');
+    chip.className = 'cat-chip';
+    chip.textContent = item.category;
+    var chipColor = colorFor(categoryName(item));
+    if (chipColor) {
+      chip.style.background = chipColor;
+      chip.style.color = chipTextColor(chipColor);
+    }
+    category.appendChild(chip);
     main.append(category);
   }
   var tags = Array.isArray(item.tags) ? item.tags : [];
@@ -369,6 +452,48 @@ function categoryName(item) {
   return item.category ? String(item.category).trim() : '';
 }
 
+function categoryInFilter(name, filter) {
+  var root = String(filter || '').trim();
+  var current = name == null ? '' : String(name).trim();
+  if (!root) return true;
+  if (root === '__none__') return current === '';
+  var children = {};
+  categories.forEach(function (cat) {
+    var parent = cat.parent ? String(cat.parent).trim() : '';
+    var catName = cat.name ? String(cat.name).trim() : '';
+    if (!parent || !catName) return;
+    if (!children[parent]) children[parent] = [];
+    children[parent].push(catName);
+  });
+  var matched = {};
+  var stack = [root];
+  var guard = 0;
+  while (stack.length && guard < 1000) {
+    guard += 1;
+    var next = stack.pop();
+    if (!next || matched[next]) continue;
+    matched[next] = true;
+    (children[next] || []).forEach(function (child) { stack.push(child); });
+  }
+  return Boolean(matched[current]);
+}
+
+function colorFor(name) {
+  for (var i = 0; i < categories.length; i++) {
+    if (categories[i].name === name && categories[i].color) return categories[i].color;
+  }
+  return '';
+}
+
+function chipTextColor(hex) {
+  var raw = String(hex || '').replace('#', '');
+  if (!/^[0-9a-fA-F]{6}$/.test(raw)) return '#fff';
+  var r = parseInt(raw.slice(0, 2), 16);
+  var g = parseInt(raw.slice(2, 4), 16);
+  var b = parseInt(raw.slice(4, 6), 16);
+  return (r * 299 + g * 587 + b * 114) / 1000 > 160 ? '#1e1a16' : '#fff';
+}
+
 function searchText(item) {
   if (item._search) return item._search;
   item._search = [item.title, item.summary, item.note, item.category]
@@ -404,7 +529,7 @@ function filteredItems() {
     var category = categoryName(item);
     if (categoryFilter === '__none__') {
       if (category) continue;
-    } else if (categoryFilter && category !== categoryFilter) {
+    } else if (categoryFilter && !categoryInFilter(category, categoryFilter)) {
       continue;
     }
     if (tagFilter && tagsOf(item).indexOf(tagFilter) === -1) continue;
@@ -434,12 +559,18 @@ function filtersActive() {
   return Boolean(query.trim() || platformFilter || categoryFilter || tagFilter);
 }
 
-function makeChip(label, count, pressed, value) {
+function makeChip(label, count, pressed, value, color) {
   var button = document.createElement('button');
   button.type = 'button';
   button.className = 'chip' + (pressed ? ' is-on' : '');
   button.setAttribute('aria-pressed', pressed ? 'true' : 'false');
   button.setAttribute('data-value', value);
+  if (color) {
+    var dot = document.createElement('span');
+    dot.className = 'dot';
+    dot.style.background = color;
+    button.appendChild(dot);
+  }
   button.appendChild(document.createTextNode(label));
   if (count != null) {
     var mark = document.createElement('span');
@@ -457,20 +588,27 @@ function renderFilterChips() {
     platformFilters.appendChild(makeChip(PLATFORM_LABEL[platform], null, platformFilter === platform, platform));
   });
 
-  var counts = {};
+  var names = [];
+  var seen = {};
+  function addName(name) {
+    if (!name || seen[name]) return;
+    seen[name] = true;
+    names.push(name);
+  }
+  orderedCategoryRows('').forEach(function (row) { addName(row.name); });
+  items.forEach(function (item) { addName(categoryName(item)); });
   var uncategorized = 0;
   items.forEach(function (item) {
-    var name = categoryName(item);
-    if (!name) uncategorized += 1;
-    else counts[name] = (counts[name] || 0) + 1;
-  });
-  var names = Object.keys(counts).sort(function (a, b) {
-    return a.localeCompare(b, 'zh-Hant');
+    if (!categoryName(item)) uncategorized += 1;
   });
   categoryFilters.replaceChildren();
   categoryFilters.appendChild(makeChip('全部', items.length, categoryFilter === '', ''));
   names.forEach(function (name) {
-    categoryFilters.appendChild(makeChip(name, counts[name], categoryFilter === name, name));
+    var count = 0;
+    items.forEach(function (item) {
+      if (categoryInFilter(categoryName(item), name)) count += 1;
+    });
+    categoryFilters.appendChild(makeChip(name, count, categoryFilter === name, name, colorFor(name)));
   });
   categoryFilters.appendChild(makeChip('未分類', uncategorized, categoryFilter === '__none__', '__none__'));
 }
@@ -564,7 +702,10 @@ function showList() {
     renderFilterChips();
     renderResults();
   }
-  refreshItems().then(function () {
+  Promise.all([
+    refreshItems(),
+    refreshCategories().catch(function () { return categories; }),
+  ]).then(function () {
     if (token !== renderToken) return;
     setListLoading(false);
     renderFilterChips();
@@ -584,7 +725,10 @@ function clearItemForm() {
   itemSummary.value = '';
   itemNote.value = '';
   itemCategory.value = '';
+  var categorySearch = document.getElementById('category-search');
+  if (categorySearch) categorySearch.value = '';
   itemTags.value = '';
+  renderCategoryPicker();
   previewStatus.hidden = true;
   previewStatus.textContent = '';
   clearFormMessage();
@@ -599,6 +743,7 @@ function fillItemForm(item) {
   itemNote.value = item.note || '';
   itemCategory.value = item.category || '';
   itemTags.value = Array.isArray(item.tags) ? item.tags.join(', ') : '';
+  renderCategoryPicker();
   previewStatus.hidden = true;
   clearFormMessage();
   useFormMeta = true;
@@ -620,12 +765,12 @@ function showForm(id) {
   setView('form');
   clearBanner();
   clearFormMessage();
-  var load = itemsLoaded ? Promise.resolve(items) : refreshItems().catch(function () {
-    return items;
+  var load = refreshCategories().catch(function () { return categories; }).then(function () {
+    return itemsLoaded ? items : refreshItems().catch(function () { return items; });
   });
   load.then(function () {
     if (token !== renderToken) return;
-    fillCategories();
+    renderCategoryPicker();
     if (!id) {
       clearItemForm();
       formHeading.textContent = '新增收藏';
@@ -765,6 +910,113 @@ function openList() {
   if ((location.hash || '#/') !== '#/') location.hash = '#/';
   else showList();
 }
+
+var CATEGORY_SWATCHES = [
+  '#e74c3c', '#e67e22', '#f1c40f', '#7cb342',
+  '#2e7d32', '#00897b', '#3d8195', '#5dade2',
+  '#2980b9', '#8e44ad', '#d81b60', '#f48fb1',
+  '#90a4ae', '#b0bec5', '#37474f', '#1c1c1c',
+];
+var categoryDialog = document.getElementById('category-dialog');
+var categoryForm = document.getElementById('category-form');
+var newCatName = document.getElementById('new-cat-name');
+var newCatParent = document.getElementById('new-cat-parent');
+var newCatHex = document.getElementById('new-cat-hex');
+var catPreview = document.getElementById('cat-preview');
+var categoryDialogMessage = document.getElementById('category-dialog-message');
+
+function updateCategoryPreview() {
+  var name = newCatName.value.trim();
+  var color = /^#[0-9a-fA-F]{6}$/.test(newCatHex.value.trim()) ? newCatHex.value.trim() : '#3d8195';
+  catPreview.textContent = name || '例如：科技、設計...';
+  catPreview.style.background = color;
+  catPreview.style.color = chipTextColor(color);
+  var swatches = document.getElementById('swatches');
+  Array.prototype.forEach.call(swatches.children, function (button) {
+    button.className = 'swatch' + (button.getAttribute('data-color') === color.toLowerCase() ? ' is-on' : '');
+  });
+}
+
+function renderSwatches() {
+  var box = document.getElementById('swatches');
+  box.replaceChildren();
+  CATEGORY_SWATCHES.forEach(function (color) {
+    var button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'swatch';
+    button.style.background = color;
+    button.setAttribute('data-color', color);
+    button.setAttribute('aria-label', color);
+    button.addEventListener('click', function () {
+      newCatHex.value = color;
+      updateCategoryPreview();
+    });
+    box.appendChild(button);
+  });
+  updateCategoryPreview();
+}
+
+function openCategoryDialog() {
+  newCatName.value = '';
+  newCatHex.value = '#3d8195';
+  categoryDialogMessage.hidden = true;
+  newCatParent.replaceChildren();
+  var none = document.createElement('option');
+  none.value = '';
+  none.textContent = '未分類';
+  newCatParent.appendChild(none);
+  orderedCategoryRows('').forEach(function (row) {
+    var option = document.createElement('option');
+    option.value = row.name;
+    option.textContent = (row.depth ? '· '.repeat(row.depth) : '') + row.name;
+    newCatParent.appendChild(option);
+  });
+  newCatParent.value = '';
+  renderSwatches();
+  categoryDialog.hidden = false;
+  newCatName.focus();
+}
+
+document.getElementById('new-category').addEventListener('click', openCategoryDialog);
+document.getElementById('category-search').addEventListener('input', renderCategoryPicker);
+document.getElementById('cat-cancel').addEventListener('click', function () {
+  categoryDialog.hidden = true;
+});
+categoryDialog.addEventListener('click', function (event) {
+  if (event.target === categoryDialog) categoryDialog.hidden = true;
+});
+newCatName.addEventListener('input', updateCategoryPreview);
+newCatHex.addEventListener('input', updateCategoryPreview);
+categoryForm.addEventListener('submit', function (event) {
+  event.preventDefault();
+  var name = newCatName.value.trim();
+  var color = newCatHex.value.trim();
+  if (!/^#[0-9a-fA-F]{6}$/.test(color)) {
+    categoryDialogMessage.hidden = false;
+    categoryDialogMessage.className = 'banner';
+    categoryDialogMessage.textContent = '請用 # 開頭的 6 碼顏色。';
+    return;
+  }
+  var button = document.getElementById('cat-create');
+  button.disabled = true;
+  callApi('addCategory', {
+    name: name,
+    parent: newCatParent.value,
+    color: color,
+  }).then(function (data) {
+    if (data.category) categories.push(data.category);
+    itemCategory.value = data.category ? data.category.name : name;
+    categoryDialog.hidden = true;
+    renderCategoryPicker();
+    renderFilterChips();
+  }).catch(function (err) {
+    categoryDialogMessage.hidden = false;
+    categoryDialogMessage.className = 'banner';
+    categoryDialogMessage.textContent = errorMessage(err);
+  }).then(function () {
+    button.disabled = false;
+  });
+});
 
 navBack.addEventListener('click', function () { openList(); });
 navAdd.addEventListener('click', function () { location.hash = '#/add'; });

@@ -334,6 +334,54 @@ test('sortNewestFirst orders by createdAt without mutating the input', () => {
   assert.equal(items[0].id, 'old');
 });
 
+test('seedCategories keeps distinct item categories and skips names that exist', () => {
+  const items = [
+    { category: 'AI的👩‍💻' },
+    { category: ' AI的👩‍💻 ' },
+    { category: '' },
+    { category: '  ' },
+    { category: '好笑的😄' },
+    { category: '好吃的😋' },
+  ];
+  const seeded = logic.seedCategories(items, [{ name: '好笑的😄', color: '#111111', parent: '', createdAt: NOW }], NOW);
+  assert.deepEqual(seeded.map((row) => row.name), ['AI的👩‍💻', '好吃的😋']);
+  assert.equal(seeded[0].color, logic.CATEGORY_COLORS[1]);
+  assert.equal(seeded[0].parent, '');
+  assert.equal(seeded[0].createdAt, NOW);
+  assert.equal(logic.seedCategories([{ category: '' }], [], NOW).length, 0);
+});
+
+test('planAddCategory rejects duplicate names and unknown parents', () => {
+  const existing = [{ name: 'AI的👩‍💻', color: '#3d8195', parent: '', createdAt: NOW }];
+  assert.equal(logic.duplicateCategory(existing, ' AI的👩‍💻 '), true);
+  assert.equal(logic.duplicateCategory(existing, '其他'), false);
+  assert.equal(logic.planAddCategory(existing, { name: 'AI的👩‍💻', color: '#112233' }, LATER).error, 'duplicate');
+  assert.equal(logic.planAddCategory(existing, { name: '  ', color: '#112233' }, LATER).error, 'bad_request');
+  assert.equal(logic.planAddCategory(existing, { name: '新分類', parent: '沒有', color: '#112233' }, LATER).error, 'bad_request');
+  const created = logic.planAddCategory(existing, { name: '新分類', parent: 'AI的👩‍💻', color: '#3D8195' }, LATER);
+  assert.equal(created.ok, true);
+  assert.equal(created.category.color, '#3d8195');
+  assert.equal(created.category.parent, 'AI的👩‍💻');
+});
+
+test('itemMatchesCategory includes child categories and planUpdateCategory blocks cycles', () => {
+  const categories = [
+    { name: '食物', parent: '' },
+    { name: '好吃的😋', parent: '食物' },
+    { name: '拉麵', parent: '好吃的😋' },
+    { name: '景點的🌸', parent: '' },
+  ];
+  assert.equal(logic.itemMatchesCategory('好吃的😋', '食物', categories), true);
+  assert.equal(logic.itemMatchesCategory('拉麵', '食物', categories), true);
+  assert.equal(logic.itemMatchesCategory('拉麵', '好吃的😋', categories), true);
+  assert.equal(logic.itemMatchesCategory('景點的🌸', '食物', categories), false);
+  assert.equal(logic.itemMatchesCategory('食物', '食物', categories), true);
+  assert.equal(logic.itemMatchesCategory('', '__none__', categories), true);
+  assert.equal(logic.itemMatchesCategory('食物', '__none__', categories), false);
+  assert.equal(logic.planUpdateCategory(categories, { name: '食物', parent: '拉麵' }).error, 'bad_request');
+  assert.equal(logic.planUpdateCategory(categories, { name: '景點的🌸', color: '#112233' }).category.color, '#112233');
+});
+
 test('the key is read from script properties and is not hard-coded', () => {
   const files = ['Code.gs', 'logic.js', 'appsscript.json', 'logic.test.js', 'fetch-samples.js'];
   const combined = files.map((name) => fs.readFileSync(path.join(__dirname, name), 'utf8')).join('\n');

@@ -77,9 +77,14 @@
         <label for="item-note">備註</label>
         <textarea id="item-note" name="note" rows="2"></textarea>
 
-        <label for="item-category">分類</label>
-        <input id="item-category" name="category" type="text" list="category-options" placeholder="選擇已有的，或輸入新的" autocomplete="off">
-        <datalist id="category-options"></datalist>
+        <div class="field-head">
+          <span id="category-label">分類</span>
+          <button type="button" id="new-category" class="ghost">新增分類</button>
+        </div>
+        <div id="chosen-category" class="chosen" hidden></div>
+        <input id="category-search" type="search" placeholder="搜尋分類" autocomplete="off" aria-labelledby="category-label">
+        <div id="category-list" class="cat-list" role="listbox" aria-labelledby="category-label"></div>
+        <input id="item-category" name="category" type="hidden">
 
         <label for="item-tags">標籤</label>
         <input id="item-tags" name="tags" type="text" placeholder="閱讀, 稍後" autocomplete="off">
@@ -118,6 +123,29 @@
         <button type="button" id="confirm-cancel" class="ghost">取消</button>
       </div>
     </div>
+  </div>
+
+  <div id="category-dialog" class="confirm" hidden>
+    <form id="category-form" class="confirm-card">
+      <h2>新增分類</h2>
+      <label for="new-cat-name">分類名稱</label>
+      <input id="new-cat-name" type="text" placeholder="例如：科技、設計..." autocomplete="off" required>
+      <label for="new-cat-parent">父分類</label>
+      <select id="new-cat-parent">
+        <option value="">未分類</option>
+      </select>
+      <p class="hint filter-label">顏色</p>
+      <div id="swatches" class="swatches"></div>
+      <label for="new-cat-hex">自訂顏色</label>
+      <input id="new-cat-hex" type="text" value="#3d8195" spellcheck="false" autocomplete="off" inputmode="text">
+      <p class="hint filter-label">預覽</p>
+      <p id="cat-preview" class="cat-chip">例如：科技、設計...</p>
+      <p id="category-dialog-message" class="banner" role="status" hidden></p>
+      <div class="form-actions">
+        <button type="button" id="cat-cancel" class="ghost">取消</button>
+        <button type="submit" id="cat-create">建立</button>
+      </div>
+    </form>
   </div>
 
   <script src="./app.js"></script>

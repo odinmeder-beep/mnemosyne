@@ -281,6 +281,87 @@ button.chip.is-on, button.tag.is-on {
   font-size: 0.88rem;
 }
 
+.field-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-top: 0.95rem;
+}
+
+.field-head button { min-height: 36px; }
+
+.chosen { margin: 0.35rem 0 0.55rem; }
+
+.cat-list {
+  max-height: 220px;
+  overflow: auto;
+  margin-top: 0.45rem;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #fff;
+}
+
+.cat-row {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 0.55rem;
+  min-height: 44px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--ink);
+  text-align: left;
+}
+
+.cat-row.is-on { background: #e7f4f1; }
+
+.dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex: 0 0 10px;
+  display: inline-block;
+}
+
+.cat-chip {
+  display: inline-flex;
+  align-items: center;
+  border: 0;
+  border-radius: 999px;
+  min-height: 32px;
+  padding: 0.15rem 0.7rem;
+  color: #fff;
+}
+
+.swatches {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+}
+
+button.swatch {
+  width: 32px;
+  height: 32px;
+  min-height: 32px;
+  padding: 0;
+  border-radius: 50%;
+  border: 2px solid transparent;
+}
+
+button.swatch.is-on {
+  box-shadow: 0 0 0 2px #fff, 0 0 0 4px #1e1a16;
+}
+
+#category-dialog .confirm-card {
+  max-height: min(90vh, 40rem);
+  overflow: auto;
+}
+
+.chip .dot { margin-right: 0.15rem; }
+
 .tags {
   display: flex;
   flex-wrap: wrap;
