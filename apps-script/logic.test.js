@@ -23,7 +23,7 @@ function sampleItem(overrides) {
       title: 'Title',
       summary: 'Summary',
       note: '',
-      category: '',
+      category: [],
       tags: ['news'],
       createdAt: NOW,
       updatedAt: NOW,
@@ -241,9 +241,21 @@ test('rowToItem and itemToRow round-trip tags and ISO times', () => {
   assert.equal(fromSheet.createdAt, '2026-01-02T03:04:05.000Z');
   assert.equal(fromSheet.updatedAt, '2026-01-02T04:00:00.000Z');
   assert.deepEqual(fromSheet.tags, ['a', 'b']);
+  assert.deepEqual(fromSheet.category, ['C']);
   assert.equal(logic.rowToItem(['only-id']).url, '');
   assert.deepEqual(logic.parseTags('a,b'), ['a', 'b']);
   assert.equal(logic.serializeTags(['a', 'b']), 'a, b');
+
+  const multi = sampleItem({ category: ['好吃的😋', 'AI的👩‍💻'] });
+  const multiRow = logic.itemToRow(multi);
+  assert.equal(multiRow[6], '好吃的😋; AI的👩‍💻');
+  assert.deepEqual(logic.rowToItem(multiRow).category, ['好吃的😋', 'AI的👩‍💻']);
+  const updated = logic.applyUpdate(multi, { category: '景點的🌸; 好吃的😋 ; 好吃的😋' }, LATER);
+  assert.equal(updated.ok, true);
+  assert.deepEqual(updated.item.category, ['景點的🌸', '好吃的😋']);
+  assert.equal(logic.itemToRow(updated.item)[6], '景點的🌸; 好吃的😋');
+  assert.equal(logic.applyUpdate(multi, { category: 1 }, LATER).error, 'bad_request');
+  assert.deepEqual(logic.applyUpdate(multi, { category: ['AI的👩‍💻', '好笑的😄'] }, LATER).item.category, ['AI的👩‍💻', '好笑的😄']);
 });
 
 test('authorize accepts only an exact configured key', () => {
@@ -266,7 +278,7 @@ test('parseAddFields and buildNewItem fill platform, tags, and blank meta', () =
   assert.equal(parsed.ok, true);
   assert.equal(parsed.fields.url, 'https://twitter.com/a/status/1');
   assert.equal(parsed.fields.note, 'later');
-  assert.equal(parsed.fields.category, '');
+  assert.deepEqual(parsed.fields.category, []);
   assert.deepEqual(parsed.fields.tags, ['閱讀', 'news', 'later']);
 
   const item = logic.buildNewItem(parsed.fields, { title: '', summary: '' }, NOW, 'uuid-1');
@@ -342,9 +354,10 @@ test('seedCategories keeps distinct item categories and skips names that exist',
     { category: '  ' },
     { category: '好笑的😄' },
     { category: '好吃的😋' },
+    { category: '景點的🌸; 好吃的😋' },
   ];
   const seeded = logic.seedCategories(items, [{ name: '好笑的😄', color: '#111111', parent: '', createdAt: NOW }], NOW);
-  assert.deepEqual(seeded.map((row) => row.name), ['AI的👩‍💻', '好吃的😋']);
+  assert.deepEqual(seeded.map((row) => row.name), ['AI的👩‍💻', '好吃的😋', '景點的🌸']);
   assert.equal(seeded[0].color, logic.CATEGORY_COLORS[1]);
   assert.equal(seeded[0].parent, '');
   assert.equal(seeded[0].createdAt, NOW);
@@ -375,6 +388,11 @@ test('itemMatchesCategory includes child categories and planUpdateCategory block
   assert.equal(logic.itemMatchesCategory('拉麵', '食物', categories), true);
   assert.equal(logic.itemMatchesCategory('拉麵', '好吃的😋', categories), true);
   assert.equal(logic.itemMatchesCategory('景點的🌸', '食物', categories), false);
+  assert.equal(logic.itemMatchesCategory('景點的🌸; 拉麵', '食物', categories), true);
+  assert.equal(logic.itemMatchesCategory('景點的🌸; 其他', '食物', categories), false);
+  assert.deepEqual(logic.parseCategoryList(' AI的👩‍💻; 好笑的😄 ; AI的👩‍💻 '), ['AI的👩‍💻', '好笑的😄']);
+  assert.equal(logic.serializeCategoryList(['AI的👩‍💻', '好笑的😄']), 'AI的👩‍💻; 好笑的😄');
+  assert.equal(logic.serializeCategoryList('好笑的😄; AI的👩‍💻'), '好笑的😄; AI的👩‍💻');
   assert.equal(logic.itemMatchesCategory('食物', '食物', categories), true);
   assert.equal(logic.itemMatchesCategory('', '__none__', categories), true);
   assert.equal(logic.itemMatchesCategory('食物', '__none__', categories), false);

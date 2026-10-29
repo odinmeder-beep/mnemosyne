@@ -321,16 +321,43 @@ var Mnemosyne = (function () {
     return CATEGORY_COLORS[Math.floor(n) % size];
   }
 
+  function parseCategoryList(value) {
+    var pieces = [];
+    if (Array.isArray(value)) {
+      for (var i = 0; i < value.length; i++) pieces.push(value[i]);
+    } else if (value != null && String(value).trim() !== '') {
+      pieces.push(value);
+    }
+    var names = [];
+    var seen = {};
+    for (var p = 0; p < pieces.length; p++) {
+      var parts = String(pieces[p] == null ? '' : pieces[p]).split(';');
+      for (var j = 0; j < parts.length; j++) {
+        var name = parts[j].trim();
+        if (!name || seen[name]) continue;
+        seen[name] = true;
+        names.push(name);
+      }
+    }
+    return names;
+  }
+
+  function serializeCategoryList(value) {
+    return parseCategoryList(value).join('; ');
+  }
+
   function distinctCategoryNames(items) {
     var seen = {};
     var names = [];
     var list = items || [];
     for (var i = 0; i < list.length; i++) {
       var raw = list[i] && list[i].category != null ? list[i].category : '';
-      var name = String(raw).trim();
-      if (!name || seen[name]) continue;
-      seen[name] = true;
-      names.push(name);
+      var parsed = parseCategoryList(raw);
+      for (var n = 0; n < parsed.length; n++) {
+        if (seen[parsed[n]]) continue;
+        seen[parsed[n]] = true;
+        names.push(parsed[n]);
+      }
     }
     return names;
   }
@@ -402,11 +429,14 @@ var Mnemosyne = (function () {
 
   function itemMatchesCategory(itemCategory, filterName, categories) {
     var filter = String(filterName || '').trim();
-    var name = itemCategory == null ? '' : String(itemCategory).trim();
-    if (filter === '__none__') return name === '';
+    var names = parseCategoryList(itemCategory);
+    if (filter === '__none__') return names.length === 0;
     if (!filter) return true;
     var allowed = categoryDescendants(categories, filter);
-    return Boolean(allowed[name]);
+    for (var i = 0; i < names.length; i++) {
+      if (allowed[names[i]]) return true;
+    }
+    return false;
   }
 
   function planAddCategory(categories, input, nowIso) {
@@ -531,12 +561,14 @@ var Mnemosyne = (function () {
       item[ITEMS_HEADERS[i]] = cellToString(source[i]);
     }
     item.tags = parseTags(item.tags);
+    item.category = parseCategoryList(item.category);
     return item;
   }
 
   function itemToRow(item) {
     return ITEMS_HEADERS.map(function (key) {
       if (key === 'tags') return serializeTags(item.tags);
+      if (key === 'category') return serializeCategoryList(item.category);
       var value = item[key];
       return value == null ? '' : String(value);
     });
@@ -551,6 +583,18 @@ var Mnemosyne = (function () {
       diff |= providedKey.charCodeAt(i) ^ expectedKey.charCodeAt(i);
     }
     return diff === 0;
+  }
+
+  function readCategoryInput(value) {
+    if (value == null || value === '') return { ok: true, value: [] };
+    if (typeof value === 'string') return { ok: true, value: parseCategoryList(value) };
+    if (Array.isArray(value)) {
+      for (var i = 0; i < value.length; i++) {
+        if (typeof value[i] !== 'string') return { ok: false, value: [] };
+      }
+      return { ok: true, value: parseCategoryList(value) };
+    }
+    return { ok: false, value: [] };
   }
 
   function readOptionalText(input, field) {
@@ -569,7 +613,7 @@ var Mnemosyne = (function () {
     if (!url) return { ok: false, error: 'invalid_url' };
     var note = readOptionalText(input, 'note');
     if (!note.ok) return { ok: false, error: 'bad_request' };
-    var category = readOptionalText(input, 'category');
+    var category = readCategoryInput(input.category);
     if (!category.ok) return { ok: false, error: 'bad_request' };
     var tags = readTagsInput(input.tags);
     if (!tags.ok) return { ok: false, error: 'bad_request' };
@@ -595,7 +639,7 @@ var Mnemosyne = (function () {
       title: title,
       summary: summary,
       note: fields.note,
-      category: fields.category,
+      category: parseCategoryList(fields.category),
       tags: parseTags(fields.tags),
       createdAt: nowIso,
       updatedAt: nowIso,
@@ -611,7 +655,7 @@ var Mnemosyne = (function () {
       title: item.title,
       summary: item.summary,
       note: item.note,
-      category: item.category,
+      category: parseCategoryList(item.category),
       tags: parseTags(item.tags),
       createdAt: item.createdAt,
       updatedAt: item.updatedAt,
@@ -637,6 +681,10 @@ var Mnemosyne = (function () {
         var tags = readTagsInput(patch.tags);
         if (!tags.ok) return { ok: false, error: 'bad_request' };
         changes.tags = tags.value;
+      } else if (field === 'category') {
+        var categories = readCategoryInput(patch.category);
+        if (!categories.ok) return { ok: false, error: 'bad_request' };
+        changes.category = categories.value;
       } else if (typeof patch[field] !== 'string') {
         return { ok: false, error: 'bad_request' };
       } else {
@@ -693,6 +741,8 @@ var Mnemosyne = (function () {
     pickImageBackfill: pickImageBackfill,
     CATEGORY_HEADERS: CATEGORY_HEADERS,
     CATEGORY_COLORS: CATEGORY_COLORS,
+    parseCategoryList: parseCategoryList,
+    serializeCategoryList: serializeCategoryList,
     seedCategories: seedCategories,
     duplicateCategory: duplicateCategory,
     itemMatchesCategory: itemMatchesCategory,

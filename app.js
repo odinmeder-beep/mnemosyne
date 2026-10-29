@@ -262,45 +262,51 @@ function renderCategoryPicker() {
   var list = document.getElementById('category-list');
   var search = document.getElementById('category-search');
   if (!chosenBox || !list || !itemCategory) return;
-  var chosen = itemCategory.value.trim();
+  var chosen = categoryNames({ category: itemCategory.value });
   chosenBox.replaceChildren();
-  if (chosen) {
+  if (chosen.length) {
     chosenBox.hidden = false;
-    var picked = document.createElement('button');
-    picked.type = 'button';
-    picked.className = 'cat-chip';
-    picked.textContent = chosen;
-    var pickedColor = colorFor(chosen) || '#3d8195';
-    picked.style.background = pickedColor;
-    picked.style.color = chipTextColor(pickedColor);
-    picked.addEventListener('click', function () {
-      itemCategory.value = '';
-      renderCategoryPicker();
+    chosen.forEach(function (name) {
+      var picked = document.createElement('button');
+      picked.type = 'button';
+      picked.className = 'cat-chip';
+      picked.textContent = name;
+      var pickedColor = colorFor(name) || '#3d8195';
+      picked.style.background = pickedColor;
+      picked.style.color = chipTextColor(pickedColor);
+      picked.addEventListener('click', function () {
+        writeCategoryField(chosen.filter(function (entry) { return entry !== name; }));
+        renderCategoryPicker();
+      });
+      chosenBox.appendChild(picked);
     });
-    chosenBox.appendChild(picked);
   } else {
     chosenBox.hidden = true;
   }
   var query = search ? search.value : '';
   list.replaceChildren();
   orderedCategoryRows(query).forEach(function (row) {
-    var button = document.createElement('button');
-    button.type = 'button';
-    button.className = 'cat-row' + (row.name === chosen ? ' is-on' : '');
-    button.style.paddingLeft = (0.75 + row.depth * 1.15) + 'rem';
-    button.setAttribute('role', 'option');
-    button.setAttribute('aria-selected', row.name === chosen ? 'true' : 'false');
+    var line = document.createElement('label');
+    line.className = 'cat-row' + (chosen.indexOf(row.name) !== -1 ? ' is-on' : '');
+    line.style.paddingLeft = (0.75 + row.depth * 1.15) + 'rem';
+    var box = document.createElement('input');
+    box.type = 'checkbox';
+    box.checked = chosen.indexOf(row.name) !== -1;
+    box.addEventListener('change', function () {
+      var next = categoryNames({ category: itemCategory.value });
+      var index = next.indexOf(row.name);
+      if (box.checked && index === -1) next.push(row.name);
+      if (!box.checked && index !== -1) next.splice(index, 1);
+      writeCategoryField(next);
+      renderCategoryPicker();
+    });
     var dot = document.createElement('span');
     dot.className = 'dot';
     dot.style.background = row.color || '#90a4ae';
     var label = document.createElement('span');
     label.textContent = row.name;
-    button.append(dot, label);
-    button.addEventListener('click', function () {
-      itemCategory.value = itemCategory.value.trim() === row.name ? '' : row.name;
-      renderCategoryPicker();
-    });
-    list.appendChild(button);
+    line.append(box, dot, label);
+    list.appendChild(line);
   });
 }
 
@@ -388,18 +394,21 @@ function renderCard(item) {
     note.textContent = item.note;
     main.append(note);
   }
-  if (item.category) {
-    var category = document.createElement('p');
+  var itemCategories = categoryNames(item);
+  if (itemCategories.length) {
+    var category = document.createElement('div');
     category.className = 'category';
-    var chip = document.createElement('span');
-    chip.className = 'cat-chip';
-    chip.textContent = item.category;
-    var chipColor = colorFor(categoryName(item));
-    if (chipColor) {
-      chip.style.background = chipColor;
-      chip.style.color = chipTextColor(chipColor);
-    }
-    category.appendChild(chip);
+    itemCategories.forEach(function (name) {
+      var chip = document.createElement('span');
+      chip.className = 'cat-chip';
+      chip.textContent = name;
+      var chipColor = colorFor(name);
+      if (chipColor) {
+        chip.style.background = chipColor;
+        chip.style.color = chipTextColor(chipColor);
+      }
+      category.appendChild(chip);
+    });
     main.append(category);
   }
   var tags = Array.isArray(item.tags) ? item.tags : [];
@@ -448,8 +457,33 @@ function tagsOf(item) {
   return Array.isArray(item.tags) ? item.tags : [];
 }
 
-function categoryName(item) {
-  return item.category ? String(item.category).trim() : '';
+function categoryNames(item) {
+  var value = item && item.category;
+  var pieces = [];
+  if (Array.isArray(value)) pieces = value;
+  else if (value != null && String(value).trim()) pieces = String(value).split(';');
+  var names = [];
+  var seen = {};
+  pieces.forEach(function (part) {
+    var name = String(part == null ? '' : part).trim();
+    if (!name || seen[name]) return;
+    seen[name] = true;
+    names.push(name);
+  });
+  return names;
+}
+
+function writeCategoryField(names) {
+  itemCategory.value = categoryNames({ category: names }).join('; ');
+}
+
+function itemHasCategory(item, filter) {
+  var names = categoryNames(item);
+  if (filter === '__none__') return names.length === 0;
+  for (var i = 0; i < names.length; i++) {
+    if (categoryInFilter(names[i], filter)) return true;
+  }
+  return false;
 }
 
 function categoryInFilter(name, filter) {
@@ -496,7 +530,8 @@ function chipTextColor(hex) {
 
 function searchText(item) {
   if (item._search) return item._search;
-  item._search = [item.title, item.summary, item.note, item.category]
+  item._search = [item.title, item.summary, item.note]
+    .concat(categoryNames(item))
     .concat(tagsOf(item))
     .join('\n')
     .toLowerCase();
@@ -526,12 +561,7 @@ function filteredItems() {
   for (var i = 0; i < items.length; i++) {
     var item = items[i];
     if (platformFilter && platformOf(item) !== platformFilter) continue;
-    var category = categoryName(item);
-    if (categoryFilter === '__none__') {
-      if (category) continue;
-    } else if (categoryFilter && !categoryInFilter(category, categoryFilter)) {
-      continue;
-    }
+    if (categoryFilter && !itemHasCategory(item, categoryFilter)) continue;
     if (tagFilter && tagsOf(item).indexOf(tagFilter) === -1) continue;
     if (!matchesQuery(item, words)) continue;
     list.push(item);
@@ -596,17 +626,19 @@ function renderFilterChips() {
     names.push(name);
   }
   orderedCategoryRows('').forEach(function (row) { addName(row.name); });
-  items.forEach(function (item) { addName(categoryName(item)); });
+  items.forEach(function (item) {
+    categoryNames(item).forEach(addName);
+  });
   var uncategorized = 0;
   items.forEach(function (item) {
-    if (!categoryName(item)) uncategorized += 1;
+    if (!categoryNames(item).length) uncategorized += 1;
   });
   categoryFilters.replaceChildren();
   categoryFilters.appendChild(makeChip('全部', items.length, categoryFilter === '', ''));
   names.forEach(function (name) {
     var count = 0;
     items.forEach(function (item) {
-      if (categoryInFilter(categoryName(item), name)) count += 1;
+      if (itemHasCategory(item, name)) count += 1;
     });
     categoryFilters.appendChild(makeChip(name, count, categoryFilter === name, name, colorFor(name)));
   });
@@ -741,7 +773,7 @@ function fillItemForm(item) {
   itemTitle.value = item.title || '';
   itemSummary.value = item.summary || '';
   itemNote.value = item.note || '';
-  itemCategory.value = item.category || '';
+  writeCategoryField(categoryNames(item));
   itemTags.value = Array.isArray(item.tags) ? item.tags.join(', ') : '';
   renderCategoryPicker();
   previewStatus.hidden = true;
@@ -1005,7 +1037,10 @@ categoryForm.addEventListener('submit', function (event) {
     color: color,
   }).then(function (data) {
     if (data.category) categories.push(data.category);
-    itemCategory.value = data.category ? data.category.name : name;
+    var createdName = data.category ? data.category.name : name;
+    var nextChosen = categoryNames({ category: itemCategory.value });
+    if (nextChosen.indexOf(createdName) === -1) nextChosen.push(createdName);
+    writeCategoryField(nextChosen);
     categoryDialog.hidden = true;
     renderCategoryPicker();
     renderFilterChips();

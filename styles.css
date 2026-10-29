@@ -276,9 +276,10 @@ button.chip.is-on, button.tag.is-on {
 }
 
 .category {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
   margin-top: 0.55rem;
-  color: var(--muted);
-  font-size: 0.88rem;
 }
 
 .field-head {
@@ -291,7 +292,12 @@ button.chip.is-on, button.tag.is-on {
 
 .field-head button { min-height: 36px; }
 
-.chosen { margin: 0.35rem 0 0.55rem; }
+.chosen {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin: 0.35rem 0 0.55rem;
+}
 
 .cat-list {
   max-height: 220px;
@@ -317,6 +323,13 @@ button.chip.is-on, button.tag.is-on {
 }
 
 .cat-row.is-on { background: #e7f4f1; }
+
+.cat-row input[type="checkbox"] {
+  width: 1.05rem;
+  height: 1.05rem;
+  flex: 0 0 auto;
+  margin: 0;
+}
 
 .dot {
   width: 10px;
