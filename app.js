@@ -103,6 +103,63 @@ function isHttpUrl(value) {
   }
 }
 
+var SHARE_STORAGE = 'mnemosyne.share';
+
+function firstHttpUrl(value) {
+  var match = String(value == null ? '' : value).match(/https?:\/\/[^\s<>"']+/i);
+  if (!match) return '';
+  var raw = match[0].replace(/[)\].,;:!?，。、】）》」』]+$/g, '');
+  if (!isHttpUrl(raw)) return '';
+  return new URL(raw).href;
+}
+
+function sharedLinkFromParams(params) {
+  var fields = ['url', 'text', 'title'];
+  for (var i = 0; i < fields.length; i++) {
+    var found = firstHttpUrl(params.get(fields[i]));
+    if (found) return found;
+  }
+  return '';
+}
+
+function pendingShare() {
+  var raw = sessionStorage.getItem(SHARE_STORAGE);
+  if (!raw) return null;
+  try {
+    var parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object') return null;
+    return { url: typeof parsed.url === 'string' ? parsed.url : '' };
+  } catch (err) {
+    sessionStorage.removeItem(SHARE_STORAGE);
+    return null;
+  }
+}
+
+function rememberShareFromLocation() {
+  var params = new URLSearchParams(location.search);
+  if (params.get('share') !== '1') return;
+  sessionStorage.setItem(SHARE_STORAGE, JSON.stringify({ url: sharedLinkFromParams(params) }));
+  history.replaceState(null, '', location.pathname + location.hash);
+}
+
+function applySharedDraft() {
+  var shared = pendingShare();
+  if (!shared) return;
+  sessionStorage.removeItem(SHARE_STORAGE);
+  if (shared.url) {
+    itemUrl.value = shared.url;
+    onPreview();
+    return;
+  }
+  previewStatus.hidden = false;
+  previewStatus.textContent = '這次分享裡沒有找到連結。';
+}
+
+function openSharedAdd() {
+  if (location.hash !== '#/add') location.hash = '#/add';
+  else showForm(null);
+}
+
 function errorMessage(err) {
   var code = err && err.code;
   var messages = {
@@ -809,6 +866,7 @@ function showForm(id) {
       saveBtn.textContent = '儲存';
       formDelete.hidden = true;
       editingId = null;
+      applySharedDraft();
       return;
     }
     var item = null;
@@ -837,6 +895,11 @@ function showSettings() {
   secretKeyInput.type = 'password';
   toggleKey.textContent = '顯示金鑰';
   clearSettingsBtn.hidden = !hasSettings();
+  if (pendingShare()) {
+    settingsMessage.hidden = false;
+    settingsMessage.className = 'banner ok';
+    settingsMessage.textContent = '貼上金鑰後，會打開這次分享的新增頁。';
+  }
 }
 
 function renderRoute() {
@@ -941,6 +1004,92 @@ function onSaveItem(event) {
 function openList() {
   if ((location.hash || '#/') !== '#/') location.hash = '#/';
   else showList();
+}
+
+var EXPORT_COLUMNS = ['id', 'url', 'platform', 'title', 'summary', 'note', 'category', 'tags', 'createdAt', 'updatedAt', 'image'];
+
+function exportDate() {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Taipei',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(new Date());
+}
+
+function exportCell(item, key) {
+  var value = item ? item[key] : '';
+  if (key === 'tags') {
+    if (Array.isArray(value)) return value.join(', ');
+    return value == null ? '' : String(value);
+  }
+  if (key === 'category' && Array.isArray(value)) return value.join('; ');
+  return value == null ? '' : String(value);
+}
+
+function csvEscape(value) {
+  var text = value == null ? '' : String(value);
+  if (/[",\r\n]/.test(text)) return '"' + text.replace(/"/g, '""') + '"';
+  return text;
+}
+
+function buildCsv(list) {
+  var lines = [EXPORT_COLUMNS.join(',')];
+  (list || []).forEach(function (item) {
+    lines.push(EXPORT_COLUMNS.map(function (key) {
+      return csvEscape(exportCell(item, key));
+    }).join(','));
+  });
+  return '\uFEFF' + lines.join('\r\n') + '\r\n';
+}
+
+function buildJson(list) {
+  var rows = (list || []).map(function (item) {
+    var row = {};
+    EXPORT_COLUMNS.forEach(function (key) {
+      if (key === 'tags') {
+        row.tags = Array.isArray(item.tags) ? item.tags.slice() : parseTags(item.tags);
+      } else if (key === 'category' && Array.isArray(item.category)) {
+        row.category = item.category.slice();
+      } else {
+        row[key] = item[key] == null ? '' : item[key];
+      }
+    });
+    return row;
+  });
+  return JSON.stringify(rows, null, 2) + '\n';
+}
+
+function downloadText(filename, mime, text) {
+  var blob = new Blob([text], { type: mime });
+  var link = document.createElement('a');
+  link.href = URL.createObjectURL(blob);
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  setTimeout(function () { URL.revokeObjectURL(link.href); }, 1500);
+}
+
+function showExportMessage(text) {
+  var message = document.getElementById('export-message');
+  if (!message) return;
+  message.hidden = false;
+  message.textContent = text;
+}
+
+function exportItems(kind) {
+  if (!itemsLoaded) {
+    showExportMessage('請先回到清單讀取收藏，再匯出。');
+    return;
+  }
+  var date = exportDate();
+  if (kind === 'csv') {
+    downloadText('mnemosyne-' + date + '.csv', 'text/csv;charset=utf-8', buildCsv(items));
+  } else {
+    downloadText('mnemosyne-' + date + '.json', 'application/json;charset=utf-8', buildJson(items));
+  }
+  showExportMessage('已下載 ' + items.length + ' 則。');
 }
 
 var CATEGORY_SWATCHES = [
@@ -1120,6 +1269,13 @@ formDelete.addEventListener('click', function () {
   if (item) openConfirm(item);
 });
 
+document.getElementById('export-csv').addEventListener('click', function () {
+  exportItems('csv');
+});
+document.getElementById('export-json').addEventListener('click', function () {
+  exportItems('json');
+});
+
 settingsForm.addEventListener('submit', function (event) {
   event.preventDefault();
   var key = secretKeyInput.value.trim();
@@ -1131,7 +1287,8 @@ settingsForm.addEventListener('submit', function (event) {
   }
   localStorage.removeItem('mnemosyne.execUrl');
   localStorage.setItem(STORAGE_KEY, key);
-  openList();
+  if (pendingShare()) openSharedAdd();
+  else openList();
 });
 
 clearSettingsBtn.addEventListener('click', function () {
@@ -1175,12 +1332,15 @@ confirmDeleteBtn.addEventListener('click', function () {
 });
 
 localStorage.removeItem('mnemosyne.execUrl');
+rememberShareFromLocation();
 
 window.addEventListener('hashchange', renderRoute);
 
 if (!hasSettings()) {
   if (location.hash !== '#/settings') location.hash = '#/settings';
   else renderRoute();
+} else if (pendingShare()) {
+  openSharedAdd();
 } else if (!location.hash || location.hash === '#') {
   location.hash = '#/';
 } else {
