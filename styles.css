@@ -137,7 +137,7 @@ label {
   font-size: 0.9rem;
 }
 
-input, textarea {
+input, textarea, select {
   display: block;
   width: 100%;
   padding: 0.75rem 0.85rem;
@@ -372,7 +372,7 @@ button.chip.is-on, button.tag.is-on {
   margin-top: 0.45rem;
   border: 1px solid var(--line);
   border-radius: 12px;
-  background: #fff;
+  background: var(--surface);
 }
 
 .cat-row {
@@ -389,7 +389,7 @@ button.chip.is-on, button.tag.is-on {
   text-align: left;
 }
 
-.cat-row.is-on { background: #e7f4f1; }
+.cat-row.is-on { background: var(--ok); }
 
 .cat-row input[type="checkbox"] {
   width: 1.05rem;
@@ -432,7 +432,7 @@ button.swatch {
 }
 
 button.swatch.is-on {
-  box-shadow: 0 0 0 2px #fff, 0 0 0 4px #1e1a16;
+  box-shadow: 0 0 0 2px var(--card), 0 0 0 4px var(--ink);
 }
 
 #category-dialog .confirm-card {
