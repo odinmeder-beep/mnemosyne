@@ -1,7 +1,6 @@
 'use strict';
 
 var DEFAULT_EXEC_URL = 'https://script.google.com/macros/s/AKfycbzjZvIIGRK6XLs6B8IpI2OQ33YeiheLJ__v-I38ybvX67vVw7h0iSxCKEFtt2zq4X3s5A/exec';
-var STORAGE_URL = 'mnemosyne.execUrl';
 var STORAGE_KEY = 'mnemosyne.key';
 var STORAGE_SORT = 'mnemosyne.sort';
 var PAGE_SIZE = 40;
@@ -76,7 +75,6 @@ var formMessage = document.getElementById('form-message');
 var saveBtn = document.getElementById('save-btn');
 var formDelete = document.getElementById('form-delete');
 var settingsForm = document.getElementById('settings-form');
-var execUrlInput = document.getElementById('exec-url');
 var secretKeyInput = document.getElementById('secret-key');
 var toggleKey = document.getElementById('toggle-key');
 var settingsMessage = document.getElementById('settings-message');
@@ -93,7 +91,7 @@ function readSort() {
 }
 
 function hasSettings() {
-  return Boolean(localStorage.getItem(STORAGE_URL) && localStorage.getItem(STORAGE_KEY));
+  return Boolean(localStorage.getItem(STORAGE_KEY));
 }
 
 function isHttpUrl(value) {
@@ -123,7 +121,6 @@ function errorMessage(err) {
 }
 
 function callApi(action, extra) {
-  var execUrl = localStorage.getItem(STORAGE_URL);
   var key = localStorage.getItem(STORAGE_KEY);
   var payload = { key: key, action: action };
   if (extra) {
@@ -131,7 +128,7 @@ function callApi(action, extra) {
       payload[name] = extra[name];
     });
   }
-  return fetch(execUrl, {
+  return fetch(DEFAULT_EXEC_URL, {
     method: 'POST',
     redirect: 'follow',
     headers: { 'Content-Type': 'text/plain;charset=utf-8' },
@@ -608,7 +605,6 @@ function showSettings() {
   setView('settings');
   clearBanner();
   settingsMessage.hidden = true;
-  execUrlInput.value = localStorage.getItem(STORAGE_URL) || DEFAULT_EXEC_URL;
   secretKeyInput.value = localStorage.getItem(STORAGE_KEY) || '';
   secretKeyInput.type = 'password';
   toggleKey.textContent = '顯示金鑰';
@@ -788,36 +784,28 @@ formDelete.addEventListener('click', function () {
 
 settingsForm.addEventListener('submit', function (event) {
   event.preventDefault();
-  var url = execUrlInput.value.trim() || DEFAULT_EXEC_URL;
   var key = secretKeyInput.value.trim();
-  if (!isHttpUrl(url)) {
-    settingsMessage.hidden = false;
-    settingsMessage.className = 'banner';
-    settingsMessage.textContent = '請貼上以 http 或 https 開頭的後端網址。';
-    return;
-  }
   if (!key) {
     settingsMessage.hidden = false;
     settingsMessage.className = 'banner';
     settingsMessage.textContent = '請填金鑰。';
     return;
   }
-  localStorage.setItem(STORAGE_URL, url);
+  localStorage.removeItem('mnemosyne.execUrl');
   localStorage.setItem(STORAGE_KEY, key);
   openList();
 });
 
 clearSettingsBtn.addEventListener('click', function () {
-  localStorage.removeItem(STORAGE_URL);
+  localStorage.removeItem('mnemosyne.execUrl');
   localStorage.removeItem(STORAGE_KEY);
   items = [];
   itemsLoaded = false;
-  execUrlInput.value = DEFAULT_EXEC_URL;
   secretKeyInput.value = '';
   clearSettingsBtn.hidden = true;
   settingsMessage.hidden = false;
   settingsMessage.className = 'banner ok';
-  settingsMessage.textContent = '已清除這台裝置上的網址與金鑰。';
+  settingsMessage.textContent = '已清除這台裝置上的金鑰。';
   setHeader();
 });
 
@@ -847,6 +835,8 @@ confirmDeleteBtn.addEventListener('click', function () {
     confirmDeleteBtn.disabled = false;
   });
 });
+
+localStorage.removeItem('mnemosyne.execUrl');
 
 window.addEventListener('hashchange', renderRoute);
 
