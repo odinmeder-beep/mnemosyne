@@ -463,6 +463,7 @@ button.swatch.is-on {
 .confirm {
   position: fixed;
   inset: 0;
+  z-index: 40;
   display: flex;
   align-items: flex-end;
   justify-content: center;
@@ -482,6 +483,124 @@ button.swatch.is-on {
 }
 
 .confirm-card p + p { margin-top: 0.35rem; }
+
+.modal {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.25rem;
+  background: var(--overlay);
+}
+
+.modal-card {
+  width: min(40rem, 100%);
+  max-height: min(92vh, 52rem);
+  display: flex;
+  flex-direction: column;
+  background: var(--card);
+  color: var(--ink);
+  border-radius: 16px;
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+
+.modal-card h2 { margin: 0; }
+
+#item-form {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  flex: 1;
+}
+
+.modal-head,
+.modal-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.85rem 1rem;
+  border-bottom: 1px solid var(--line);
+  background: var(--card);
+  flex: 0 0 auto;
+}
+
+.modal-foot {
+  border-bottom: 0;
+  border-top: 1px solid var(--line);
+  justify-content: flex-end;
+}
+
+.modal-foot button { margin: 0; }
+
+.modal-body {
+  overflow: auto;
+  padding: 0.35rem 1rem 1rem;
+}
+
+.icon-close {
+  min-height: 36px;
+  min-width: 36px;
+  padding: 0;
+  font-size: 1.4rem;
+  line-height: 1;
+}
+
+.url-line,
+.new-tag-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.url-line input,
+.new-tag-row input { flex: 1; min-width: 0; }
+
+.url-line button,
+.new-tag-row button {
+  flex: 0 0 auto;
+  margin: 0;
+}
+
+.form-card {
+  margin-top: 0.95rem;
+  padding: 0.85rem;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--bg);
+}
+
+.form-card .field-head { margin-top: 0; }
+
+.form-card > label:first-child { margin-top: 0; }
+
+.tag-empty {
+  margin: 0.45rem 0 0;
+  padding: 0.9rem 0.5rem;
+  text-align: center;
+  color: var(--muted);
+  border: 1px dashed var(--line);
+  border-radius: 10px;
+}
+
+#form-delete { margin-top: 1rem; }
+
+@media (max-width: 480px) {
+  .modal {
+    padding: 0;
+    align-items: stretch;
+  }
+
+  .modal-card {
+    width: 100%;
+    height: 100%;
+    max-height: none;
+    border-radius: 0;
+  }
+}
 
 @media (max-width: 480px) {
   .thumb {
