@@ -9,6 +9,7 @@
  */
 
 var ITEMS_SHEET = 'items';
+var CATEGORIES_SHEET = 'categories';
 
 function doGet() {
   return json_({ ok: false, error: 'method_not_allowed' });
@@ -29,11 +30,7 @@ function doPost(e) {
   }
 }
 
-function setup() {
-  var ss = getSpreadsheet_();
-  var sheet = ss.getSheetByName(ITEMS_SHEET);
-  if (!sheet) sheet = ss.insertSheet(ITEMS_SHEET);
-  var headers = Mnemosyne.ITEMS_HEADERS;
+function ensureHeaderRow_(sheet, headers) {
   var width = headers.length;
   var current = sheet.getRange(1, 1, 1, width).getValues()[0];
   var any = false;
@@ -50,7 +47,17 @@ function setup() {
   sheet.getRange(1, 1, 1, width).setFontWeight('bold');
   sheet.setFrozenRows(1);
   sheet.getRange(1, 1, sheet.getMaxRows(), width).setNumberFormat('@');
-  console.log('items sheet is ready');
+}
+
+function setup() {
+  var ss = getSpreadsheet_();
+  var itemsSheet = ss.getSheetByName(ITEMS_SHEET);
+  if (!itemsSheet) itemsSheet = ss.insertSheet(ITEMS_SHEET);
+  ensureHeaderRow_(itemsSheet, Mnemosyne.ITEMS_HEADERS);
+  var categoriesSheet = ss.getSheetByName(CATEGORIES_SHEET);
+  if (!categoriesSheet) categoriesSheet = ss.insertSheet(CATEGORIES_SHEET);
+  ensureHeaderRow_(categoriesSheet, Mnemosyne.CATEGORY_HEADERS);
+  console.log('sheets are ready');
   return 'ok';
 }
 
@@ -63,6 +70,9 @@ function dispatch_(body) {
   if (action === 'delete') return handleDelete_(body);
   if (action === 'preview') return handlePreview_(body);
   if (action === 'backfillImages') return handleBackfillImages_(body);
+  if (action === 'listCategories') return handleListCategories_();
+  if (action === 'addCategory') return handleAddCategory_(body);
+  if (action === 'updateCategory') return handleUpdateCategory_(body);
   return { ok: false, error: 'unknown_action' };
 }
 
@@ -201,6 +211,90 @@ function readHtml_(response) {
   }
   if (text.length > Mnemosyne.MAX_HTML_CHARS) text = text.slice(0, Mnemosyne.MAX_HTML_CHARS);
   return text;
+}
+
+function cellText_(value) {
+  if (value == null || value === '') return '';
+  if (Object.prototype.toString.call(value) === '[object Date]') {
+    if (isNaN(value.getTime())) return '';
+    return value.toISOString();
+  }
+  return String(value);
+}
+
+function readCategories_() {
+  var ss = getSpreadsheet_();
+  var sheet = ss.getSheetByName(CATEGORIES_SHEET);
+  if (!sheet) {
+    var missing = new Error('not_setup');
+    missing.code = 'not_setup';
+    throw missing;
+  }
+  var headers = Mnemosyne.CATEGORY_HEADERS;
+  var current = sheet.getRange(1, 1, 1, headers.length).getValues()[0];
+  for (var h = 0; h < headers.length; h++) {
+    if (String(current[h] || '') !== headers[h]) {
+      var bad = new Error('not_setup');
+      bad.code = 'not_setup';
+      throw bad;
+    }
+  }
+  var lastRow = sheet.getLastRow();
+  if (lastRow < 2) return { sheet: sheet, categories: [] };
+  var values = sheet.getRange(2, 1, lastRow - 1, headers.length).getValues();
+  var categories = [];
+  for (var i = 0; i < values.length; i++) {
+    var name = String(values[i][0] || '').trim();
+    if (!name) continue;
+    categories.push({
+      name: name,
+      color: String(values[i][1] || ''),
+      parent: String(values[i][2] || '').trim(),
+      createdAt: cellText_(values[i][3]),
+    });
+  }
+  return { sheet: sheet, categories: categories };
+}
+
+function handleListCategories_() {
+  return withLock_(function () {
+    var loaded = readCategories_();
+    if (loaded.categories.length) return { ok: true, categories: loaded.categories };
+    var seeded = Mnemosyne.seedCategories(readAllItems_(), [], new Date().toISOString());
+    for (var i = 0; i < seeded.length; i++) {
+      loaded.sheet.appendRow([seeded[i].name, seeded[i].color, seeded[i].parent, seeded[i].createdAt]);
+    }
+    return { ok: true, categories: seeded };
+  });
+}
+
+function handleAddCategory_(body) {
+  var now = new Date().toISOString();
+  return withLock_(function () {
+    var loaded = readCategories_();
+    var planned = Mnemosyne.planAddCategory(loaded.categories, body || {}, now);
+    if (!planned.ok) return planned;
+    var row = planned.category;
+    loaded.sheet.appendRow([row.name, row.color, row.parent, row.createdAt]);
+    return { ok: true, category: row };
+  });
+}
+
+function handleUpdateCategory_(body) {
+  return withLock_(function () {
+    var loaded = readCategories_();
+    var planned = Mnemosyne.planUpdateCategory(loaded.categories, body || {});
+    if (!planned.ok) return planned;
+    var lastRow = loaded.sheet.getLastRow();
+    if (lastRow < 2) return { ok: false, error: 'not_found' };
+    var names = loaded.sheet.getRange(2, 1, lastRow - 1, 1).getValues();
+    for (var i = 0; i < names.length; i++) {
+      if (String(names[i][0] || '').trim() !== planned.category.name) continue;
+      loaded.sheet.getRange(i + 2, 2, 1, 2).setValues([[planned.category.color, planned.category.parent]]);
+      return { ok: true, category: planned.category };
+    }
+    return { ok: false, error: 'not_found' };
+  });
 }
 
 function getSpreadsheet_() {

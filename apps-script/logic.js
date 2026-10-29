@@ -293,6 +293,201 @@ var Mnemosyne = (function () {
     return preview;
   }
 
+  var CATEGORY_HEADERS = Object.freeze(['name', 'color', 'parent', 'createdAt']);
+
+  var CATEGORY_COLORS = Object.freeze([
+    '#e74c3c',
+    '#e67e22',
+    '#f1c40f',
+    '#7cb342',
+    '#2e7d32',
+    '#00897b',
+    '#3d8195',
+    '#5dade2',
+    '#2980b9',
+    '#8e44ad',
+    '#d81b60',
+    '#f48fb1',
+    '#90a4ae',
+    '#b0bec5',
+    '#37474f',
+    '#1c1c1c',
+  ]);
+
+  function categoryColorAt(index) {
+    var size = CATEGORY_COLORS.length;
+    var n = Number(index);
+    if (!n || n < 0) n = 0;
+    return CATEGORY_COLORS[Math.floor(n) % size];
+  }
+
+  function parseCategoryList(value) {
+    var pieces = [];
+    if (Array.isArray(value)) {
+      for (var i = 0; i < value.length; i++) pieces.push(value[i]);
+    } else if (value != null && String(value).trim() !== '') {
+      pieces.push(value);
+    }
+    var names = [];
+    var seen = {};
+    for (var p = 0; p < pieces.length; p++) {
+      var parts = String(pieces[p] == null ? '' : pieces[p]).split(';');
+      for (var j = 0; j < parts.length; j++) {
+        var name = parts[j].trim();
+        if (!name || seen[name]) continue;
+        seen[name] = true;
+        names.push(name);
+      }
+    }
+    return names;
+  }
+
+  function serializeCategoryList(value) {
+    return parseCategoryList(value).join('; ');
+  }
+
+  function distinctCategoryNames(items) {
+    var seen = {};
+    var names = [];
+    var list = items || [];
+    for (var i = 0; i < list.length; i++) {
+      var raw = list[i] && list[i].category != null ? list[i].category : '';
+      var parsed = parseCategoryList(raw);
+      for (var n = 0; n < parsed.length; n++) {
+        if (seen[parsed[n]]) continue;
+        seen[parsed[n]] = true;
+        names.push(parsed[n]);
+      }
+    }
+    return names;
+  }
+
+  function seedCategories(items, existing, nowIso) {
+    var have = {};
+    var rows = existing || [];
+    for (var i = 0; i < rows.length; i++) {
+      var known = rows[i] && rows[i].name != null ? String(rows[i].name).trim() : '';
+      if (known) have[known] = true;
+    }
+    var names = distinctCategoryNames(items);
+    var created = [];
+    var next = 0;
+    for (var h = 0; h < rows.length; h++) {
+      if (rows[h] && String(rows[h].name || '').trim()) next += 1;
+    }
+    for (var j = 0; j < names.length; j++) {
+      if (have[names[j]]) continue;
+      created.push({
+        name: names[j],
+        color: categoryColorAt(next),
+        parent: '',
+        createdAt: nowIso,
+      });
+      next += 1;
+    }
+    return created;
+  }
+
+  function duplicateCategory(categories, name) {
+    var wanted = String(name || '').trim();
+    if (!wanted) return false;
+    var list = categories || [];
+    for (var i = 0; i < list.length; i++) {
+      var current = list[i] && list[i].name != null ? String(list[i].name).trim() : '';
+      if (current === wanted) return true;
+    }
+    return false;
+  }
+
+  function validHexColor(value) {
+    return /^#[0-9a-fA-F]{6}$/.test(String(value || '').trim());
+  }
+
+  function categoryDescendants(categories, root) {
+    var children = {};
+    var list = categories || [];
+    for (var i = 0; i < list.length; i++) {
+      var name = list[i] && list[i].name != null ? String(list[i].name).trim() : '';
+      var parent = list[i] && list[i].parent != null ? String(list[i].parent).trim() : '';
+      if (!name || !parent) continue;
+      if (!children[parent]) children[parent] = [];
+      children[parent].push(name);
+    }
+    var matched = {};
+    var stack = [String(root || '').trim()];
+    var guard = 0;
+    while (stack.length && guard < 1000) {
+      guard += 1;
+      var current = stack.pop();
+      if (!current || matched[current]) continue;
+      matched[current] = true;
+      var kids = children[current] || [];
+      for (var k = 0; k < kids.length; k++) stack.push(kids[k]);
+    }
+    return matched;
+  }
+
+  function itemMatchesCategory(itemCategory, filterName, categories) {
+    var filter = String(filterName || '').trim();
+    var names = parseCategoryList(itemCategory);
+    if (filter === '__none__') return names.length === 0;
+    if (!filter) return true;
+    var allowed = categoryDescendants(categories, filter);
+    for (var i = 0; i < names.length; i++) {
+      if (allowed[names[i]]) return true;
+    }
+    return false;
+  }
+
+  function planAddCategory(categories, input, nowIso) {
+    var name = input && input.name != null ? String(input.name).trim() : '';
+    if (!name) return { ok: false, error: 'bad_request' };
+    var list = categories || [];
+    if (duplicateCategory(list, name)) return { ok: false, error: 'duplicate' };
+    var parent = input && input.parent != null ? String(input.parent).trim() : '';
+    if (parent === name) return { ok: false, error: 'bad_request' };
+    if (parent && !duplicateCategory(list, parent)) return { ok: false, error: 'bad_request' };
+    var color = input && input.color != null ? String(input.color).trim() : '';
+    if (!validHexColor(color)) color = categoryColorAt(list.length);
+    else color = color.toLowerCase();
+    return {
+      ok: true,
+      category: { name: name, color: color, parent: parent, createdAt: nowIso },
+    };
+  }
+
+  function planUpdateCategory(categories, input) {
+    var name = input && input.name != null ? String(input.name).trim() : '';
+    if (!name) return { ok: false, error: 'bad_request' };
+    var list = categories || [];
+    var found = null;
+    for (var i = 0; i < list.length; i++) {
+      var current = list[i] && list[i].name != null ? String(list[i].name).trim() : '';
+      if (current === name) found = list[i];
+    }
+    if (!found) return { ok: false, error: 'not_found' };
+    var next = {
+      name: name,
+      color: found.color || '',
+      parent: found.parent ? String(found.parent).trim() : '',
+      createdAt: found.createdAt || '',
+    };
+    if (input.color != null) {
+      var color = String(input.color).trim();
+      if (!validHexColor(color)) return { ok: false, error: 'bad_request' };
+      next.color = color.toLowerCase();
+    }
+    if (input.parent != null) {
+      var parent = String(input.parent).trim();
+      if (parent === name) return { ok: false, error: 'bad_request' };
+      if (parent && !duplicateCategory(list, parent)) return { ok: false, error: 'bad_request' };
+      var descendants = categoryDescendants(list, name);
+      if (parent && descendants[parent]) return { ok: false, error: 'bad_request' };
+      next.parent = parent;
+    }
+    return { ok: true, category: next };
+  }
+
   function imageNeedsFetch(value) {
     return String(value == null ? '' : value).trim() === '';
   }
@@ -366,12 +561,14 @@ var Mnemosyne = (function () {
       item[ITEMS_HEADERS[i]] = cellToString(source[i]);
     }
     item.tags = parseTags(item.tags);
+    item.category = parseCategoryList(item.category);
     return item;
   }
 
   function itemToRow(item) {
     return ITEMS_HEADERS.map(function (key) {
       if (key === 'tags') return serializeTags(item.tags);
+      if (key === 'category') return serializeCategoryList(item.category);
       var value = item[key];
       return value == null ? '' : String(value);
     });
@@ -386,6 +583,18 @@ var Mnemosyne = (function () {
       diff |= providedKey.charCodeAt(i) ^ expectedKey.charCodeAt(i);
     }
     return diff === 0;
+  }
+
+  function readCategoryInput(value) {
+    if (value == null || value === '') return { ok: true, value: [] };
+    if (typeof value === 'string') return { ok: true, value: parseCategoryList(value) };
+    if (Array.isArray(value)) {
+      for (var i = 0; i < value.length; i++) {
+        if (typeof value[i] !== 'string') return { ok: false, value: [] };
+      }
+      return { ok: true, value: parseCategoryList(value) };
+    }
+    return { ok: false, value: [] };
   }
 
   function readOptionalText(input, field) {
@@ -404,7 +613,7 @@ var Mnemosyne = (function () {
     if (!url) return { ok: false, error: 'invalid_url' };
     var note = readOptionalText(input, 'note');
     if (!note.ok) return { ok: false, error: 'bad_request' };
-    var category = readOptionalText(input, 'category');
+    var category = readCategoryInput(input.category);
     if (!category.ok) return { ok: false, error: 'bad_request' };
     var tags = readTagsInput(input.tags);
     if (!tags.ok) return { ok: false, error: 'bad_request' };
@@ -430,7 +639,7 @@ var Mnemosyne = (function () {
       title: title,
       summary: summary,
       note: fields.note,
-      category: fields.category,
+      category: parseCategoryList(fields.category),
       tags: parseTags(fields.tags),
       createdAt: nowIso,
       updatedAt: nowIso,
@@ -446,7 +655,7 @@ var Mnemosyne = (function () {
       title: item.title,
       summary: item.summary,
       note: item.note,
-      category: item.category,
+      category: parseCategoryList(item.category),
       tags: parseTags(item.tags),
       createdAt: item.createdAt,
       updatedAt: item.updatedAt,
@@ -472,6 +681,10 @@ var Mnemosyne = (function () {
         var tags = readTagsInput(patch.tags);
         if (!tags.ok) return { ok: false, error: 'bad_request' };
         changes.tags = tags.value;
+      } else if (field === 'category') {
+        var categories = readCategoryInput(patch.category);
+        if (!categories.ok) return { ok: false, error: 'bad_request' };
+        changes.category = categories.value;
       } else if (typeof patch[field] !== 'string') {
         return { ok: false, error: 'bad_request' };
       } else {
@@ -526,6 +739,15 @@ var Mnemosyne = (function () {
     extractMeta: extractMeta,
     previewFromFetch: previewFromFetch,
     pickImageBackfill: pickImageBackfill,
+    CATEGORY_HEADERS: CATEGORY_HEADERS,
+    CATEGORY_COLORS: CATEGORY_COLORS,
+    parseCategoryList: parseCategoryList,
+    serializeCategoryList: serializeCategoryList,
+    seedCategories: seedCategories,
+    duplicateCategory: duplicateCategory,
+    itemMatchesCategory: itemMatchesCategory,
+    planAddCategory: planAddCategory,
+    planUpdateCategory: planUpdateCategory,
     parseTags: parseTags,
     serializeTags: serializeTags,
     rowToItem: rowToItem,
