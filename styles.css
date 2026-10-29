@@ -202,9 +202,9 @@ button.chip.is-on, button.tag.is-on {
 .card-main { min-width: 0; flex: 1; }
 
 .thumb {
-  width: 44px;
-  height: 44px;
-  flex: 0 0 44px;
+  width: 88px;
+  height: 88px;
+  flex: 0 0 88px;
   border-radius: 10px;
   overflow: hidden;
   background: #1c1917;
@@ -417,6 +417,14 @@ button.swatch.is-on {
 }
 
 .confirm-card p + p { margin-top: 0.35rem; }
+
+@media (max-width: 480px) {
+  .thumb {
+    width: 72px;
+    height: 72px;
+    flex-basis: 72px;
+  }
+}
 
 @media (min-width: 700px) {
   .wrap { padding-top: 1.5rem; }
