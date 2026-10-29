@@ -1,6 +1,10 @@
 /**
  * Run: node --test apps-script/logic.test.js
+ * URL is removed first. Apps Script V8 has no URL global, and these tests
+ * must fail if parsing starts calling it again.
  */
+delete globalThis.URL;
+
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -27,6 +31,15 @@ function sampleItem(overrides) {
     overrides || {}
   );
 }
+
+test('parsing runs with the URL global removed', () => {
+  assert.equal(typeof URL, 'undefined');
+  assert.equal(logic.normalizeUrl('https://www.bbc.com/news'), 'https://www.bbc.com/news');
+  assert.equal(logic.detectPlatform('https://www.bbc.com/news'), 'web');
+  assert.equal(logic.normalizeUrl('https://www.bbc.com:443/news/'), 'https://www.bbc.com/news');
+  assert.equal(logic.normalizeUrl('https://example.com:8443/a/'), 'https://example.com:8443/a');
+  assert.equal(logic.normalizeUrl('https://example.com?q=1#section'), 'https://example.com/?q=1');
+});
 
 test('detectPlatform maps hosts and leaves everything else as web', () => {
   const cases = [
