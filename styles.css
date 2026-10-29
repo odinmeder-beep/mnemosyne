@@ -125,6 +125,8 @@ textarea { resize: vertical; }
 
 .form-actions { margin-top: 1.35rem; }
 
+.backup { margin-top: 1.75rem; }
+
 .sort-row {
   display: flex;
   align-items: center;
