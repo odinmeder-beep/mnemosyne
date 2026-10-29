@@ -2,6 +2,7 @@
 
 var EXEC_URL = 'https://script.google.com/macros/s/AKfycbzjZvIIGRK6XLs6B8IpI2OQ33YeiheLJ__v-I38ybvX67vVw7h0iSxCKEFtt2zq4X3s5A/exec';
 var STORAGE_KEY = 'mnemosyne.key';
+var CATEGORY_CACHE = 'mnemosyne.categories';
 
 var needKey = document.getElementById('need-key');
 var form = document.getElementById('save-form');
@@ -159,14 +160,38 @@ function fillCurrentTab() {
   });
 }
 
-function loadCategories() {
-  categoryStatus.textContent = '讀取分類…';
+function categorySignature(list) {
+  return JSON.stringify(list || []);
+}
+
+function showCategoryList(list) {
+  categories = list;
+  categoryStatus.textContent = categories.length ? '' : '還沒有分類。';
+  renderCategories();
+}
+
+function loadCategories(cached) {
+  var hadCache = Array.isArray(cached);
+  if (hadCache) showCategoryList(cached);
+  else {
+    categoryStatus.textContent = '讀取分類…';
+    categoryList.style.minHeight = '180px';
+  }
+  var shown = categorySignature(categories);
   callApi('listCategories').then(function (data) {
-    categories = Array.isArray(data.categories) ? data.categories : [];
-    categoryStatus.textContent = categories.length ? '' : '還沒有分類。';
-    renderCategories();
+    var next = Array.isArray(data.categories) ? data.categories : [];
+    var payload = {};
+    payload[CATEGORY_CACHE] = next;
+    chrome.storage.local.set(payload);
+    categoryList.style.minHeight = '';
+    if (categorySignature(next) === shown) {
+      categoryStatus.textContent = next.length ? '' : '還沒有分類。';
+      return;
+    }
+    showCategoryList(next);
   }).catch(function (err) {
-    categoryStatus.textContent = errorText(err && err.code);
+    categoryList.style.minHeight = '';
+    if (!categories.length) categoryStatus.textContent = errorText(err && err.code);
   });
 }
 
@@ -209,7 +234,7 @@ form.addEventListener('submit', function (event) {
   });
 });
 
-chrome.storage.local.get(STORAGE_KEY, function (stored) {
+chrome.storage.local.get([STORAGE_KEY, CATEGORY_CACHE], function (stored) {
   apiKey = stored[STORAGE_KEY] || '';
   if (!apiKey) {
     needKey.hidden = false;
@@ -219,5 +244,5 @@ chrome.storage.local.get(STORAGE_KEY, function (stored) {
   needKey.hidden = true;
   form.hidden = false;
   fillCurrentTab();
-  loadCategories();
+  loadCategories(stored[CATEGORY_CACHE]);
 });
