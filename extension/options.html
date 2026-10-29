@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html lang="zh-Hant-TW">
+<head>
+  <meta charset="utf-8">
+  <title>Mnemosyne 設定</title>
+  <link rel="stylesheet" href="extension.css">
+</head>
+<body class="options">
+  <h1>Mnemosyne 設定</h1>
+  <p class="hint">貼上和網頁相同的金鑰。它只存在這台瀏覽器。</p>
+  <form id="options-form">
+    <label for="key">金鑰</label>
+    <input id="key" name="key" type="password" spellcheck="false" autocomplete="off" required>
+    <button type="button" id="toggle" class="ghost">顯示金鑰</button>
+    <p id="message" class="banner" role="status" hidden></p>
+    <button type="submit">儲存</button>
+  </form>
+  <script src="options.js"></script>
+</body>
+</html>
