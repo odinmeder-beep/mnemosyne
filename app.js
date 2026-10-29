@@ -788,7 +788,7 @@ formDelete.addEventListener('click', function () {
 
 settingsForm.addEventListener('submit', function (event) {
   event.preventDefault();
-  var url = execUrlInput.value.trim();
+  var url = execUrlInput.value.trim() || DEFAULT_EXEC_URL;
   var key = secretKeyInput.value.trim();
   if (!isHttpUrl(url)) {
     settingsMessage.hidden = false;
