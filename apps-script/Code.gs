@@ -36,11 +36,17 @@ function setup() {
   var headers = Mnemosyne.ITEMS_HEADERS;
   var width = headers.length;
   var current = sheet.getRange(1, 1, 1, width).getValues()[0];
-  var matches = true;
+  var any = false;
   for (var i = 0; i < width; i++) {
-    if (String(current[i] || '') !== headers[i]) matches = false;
+    if (current[i]) any = true;
   }
-  if (!matches) sheet.getRange(1, 1, 1, width).setValues([headers]);
+  if (!any) {
+    sheet.getRange(1, 1, 1, width).setValues([headers]);
+  } else {
+    for (var j = 0; j < width; j++) {
+      if (!current[j]) sheet.getRange(1, j + 1).setValue(headers[j]);
+    }
+  }
   sheet.getRange(1, 1, 1, width).setFontWeight('bold');
   sheet.setFrozenRows(1);
   sheet.getRange(1, 1, sheet.getMaxRows(), width).setNumberFormat('@');
@@ -56,6 +62,7 @@ function dispatch_(body) {
   if (action === 'update') return handleUpdate_(body);
   if (action === 'delete') return handleDelete_(body);
   if (action === 'preview') return handlePreview_(body);
+  if (action === 'backfillImages') return handleBackfillImages_(body);
   return { ok: false, error: 'unknown_action' };
 }
 
@@ -104,6 +111,41 @@ function handleUpdate_(body) {
     if (!applied.ok) return applied;
     writeRow_(loaded.sheet, entry.rowNumber, applied.item);
     return { ok: true, item: applied.item };
+  });
+}
+
+function handleBackfillImages_(body) {
+  var limit = 25;
+  if (body && body.limit != null && body.limit !== '') {
+    var n = Number(body.limit);
+    if (!isFinite(n) || n < 1) return { ok: false, error: 'bad_request' };
+    limit = Math.floor(n);
+  }
+  var loaded = withLock_(function () {
+    return loadRows_();
+  });
+  var plan = Mnemosyne.pickImageBackfill(loaded.entries, limit);
+  var imageColumn = Mnemosyne.ITEMS_HEADERS.indexOf('image') + 1;
+  var writes = [];
+  for (var i = 0; i < plan.batch.length; i++) {
+    var entry = plan.batch[i];
+    var preview = fetchPreview_(entry.item.url);
+    var image = preview && preview.image ? preview.image : '-';
+    writes.push({ rowNumber: entry.rowNumber, image: image });
+  }
+  return withLock_(function () {
+    var sheet = getItemsSheet_();
+    for (var j = 0; j < writes.length; j++) {
+      var cell = sheet.getRange(writes[j].rowNumber, imageColumn);
+      cell.setNumberFormat('@');
+      cell.setValue(writes[j].image);
+    }
+    var remaining = 0;
+    var entries = loadRows_().entries;
+    for (var k = 0; k < entries.length; k++) {
+      if (String(entries[k].item.image || '').trim() === '') remaining += 1;
+    }
+    return { ok: true, updated: writes.length, remaining: remaining };
   });
 }
 
