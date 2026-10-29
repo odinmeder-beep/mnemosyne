@@ -229,9 +229,58 @@ function fillCategories() {
   });
 }
 
+function usableImage(value) {
+  var text = value == null ? '' : String(value).trim();
+  if (!text || text === '-') return '';
+  return text;
+}
+
+function faviconUrl(pageUrl) {
+  var match = /^https?:\/\/([^/?#]+)/i.exec(String(pageUrl || ''));
+  if (!match) return '';
+  var host = match[1].split(':')[0];
+  if (!host) return '';
+  return 'https://www.google.com/s2/favicons?domain=' + encodeURIComponent(host) + '&sz=64';
+}
+
+function renderThumb(item) {
+  var box = document.createElement('div');
+  box.className = 'thumb';
+  var photo = usableImage(item.image);
+  var icon = faviconUrl(item.url);
+  function showIcon() {
+    box.replaceChildren();
+    if (!icon) return;
+    var fallback = document.createElement('img');
+    fallback.className = 'thumb-icon';
+    fallback.alt = '';
+    fallback.referrerPolicy = 'no-referrer';
+    fallback.src = icon;
+    fallback.addEventListener('error', function () { box.replaceChildren(); });
+    box.appendChild(fallback);
+  }
+  if (photo) {
+    var img = document.createElement('img');
+    img.className = 'thumb-photo';
+    img.alt = '';
+    img.loading = 'lazy';
+    img.referrerPolicy = 'no-referrer';
+    img.src = photo;
+    img.addEventListener('error', showIcon);
+    box.appendChild(img);
+  } else {
+    showIcon();
+  }
+  return box;
+}
+
 function renderCard(item) {
   var card = document.createElement('article');
   card.className = 'card';
+  var top = document.createElement('div');
+  top.className = 'card-top';
+  var main = document.createElement('div');
+  main.className = 'card-main';
 
   var meta = document.createElement('div');
   meta.className = 'meta';
@@ -250,25 +299,25 @@ function renderCard(item) {
   title.target = '_blank';
   title.rel = 'noopener noreferrer';
   title.textContent = item.title || item.url || '沒有標題';
-  card.append(meta, title);
+  main.append(meta, title);
 
   if (item.summary) {
     var summary = document.createElement('p');
     summary.className = 'summary';
     summary.textContent = item.summary;
-    card.append(summary);
+    main.append(summary);
   }
   if (item.note) {
     var note = document.createElement('p');
     note.className = 'note';
     note.textContent = item.note;
-    card.append(note);
+    main.append(note);
   }
   if (item.category) {
     var category = document.createElement('p');
     category.className = 'category';
     category.textContent = '分類：' + item.category;
-    card.append(category);
+    main.append(category);
   }
   var tags = Array.isArray(item.tags) ? item.tags : [];
   if (tags.length) {
@@ -286,7 +335,7 @@ function renderCard(item) {
       });
       row.append(chip);
     });
-    card.append(row);
+    main.append(row);
   }
 
   var actions = document.createElement('div');
@@ -306,7 +355,9 @@ function renderCard(item) {
     openConfirm(item);
   });
   actions.append(edit, remove);
-  card.append(actions);
+  main.append(actions);
+  top.append(renderThumb(item), main);
+  card.append(top);
   return card;
 }
 

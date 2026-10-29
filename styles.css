@@ -191,6 +191,38 @@ button.chip.is-on, button.tag.is-on {
   box-shadow: var(--shadow);
 }
 
+.card-top {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+}
+
+.card-main { min-width: 0; flex: 1; }
+
+.thumb {
+  width: 44px;
+  height: 44px;
+  flex: 0 0 44px;
+  border-radius: 10px;
+  overflow: hidden;
+  background: #1c1917;
+}
+
+.thumb img {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.thumb-photo { object-fit: cover; }
+
+.thumb-icon {
+  object-fit: contain;
+  padding: 8px;
+  box-sizing: border-box;
+  background: #1c1917;
+}
+
 .meta {
   display: flex;
   align-items: center;

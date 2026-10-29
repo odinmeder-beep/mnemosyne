@@ -17,6 +17,7 @@ var Mnemosyne = (function () {
     'tags',
     'createdAt',
     'updatedAt',
+    'image',
   ]);
 
   var USER_FIELDS = Object.freeze([
@@ -193,10 +194,70 @@ var Mnemosyne = (function () {
     return '';
   }
 
-  function extractMeta(html) {
-    var empty = { title: '', summary: '' };
+  function readLinkHref(html, relValue) {
+    var re = /<link\b[^>]*>/gi;
+    var wanted = relValue.toLowerCase();
+    var match;
+    while ((match = re.exec(html))) {
+      var attrs = readAttributes(match[0]);
+      var rel = String(attrs.rel || '').toLowerCase().split(/\s+/);
+      var hit = false;
+      for (var i = 0; i < rel.length; i++) {
+        if (rel[i] === wanted) hit = true;
+      }
+      if (!hit) continue;
+      var href = decodeHtmlEntities(attrs.href || '');
+      if (href) return href;
+    }
+    return '';
+  }
+
+  function pageBase(pageUrl) {
+    if (typeof pageUrl !== 'string') return null;
+    var match = /^(https?):\/\/([^/?#]+)([^?#]*)/i.exec(pageUrl.trim());
+    if (!match) return null;
+    return { scheme: match[1].toLowerCase(), host: match[2], path: match[3] || '/' };
+  }
+
+  function resolveUrl(pageUrl, raw) {
+    if (!raw || typeof raw !== 'string') return '';
+    var ref = raw.trim();
+    if (!ref || /[\u0000-\u001f\u007f]/.test(ref)) return '';
+    if (/^https?:\/\//i.test(ref)) return ref;
+    var base = pageBase(pageUrl);
+    if (!base) return '';
+    if (ref.indexOf('//') === 0) return base.scheme + ':' + ref;
+    if (ref.charAt(0) === '/') return base.scheme + '://' + base.host + ref;
+    if (ref.charAt(0) === '?' || ref.charAt(0) === '#') return '';
+    var slash = base.path.lastIndexOf('/');
+    var dir = slash >= 0 ? base.path.slice(0, slash + 1) : '/';
+    var parts = (dir + ref).split('/');
+    var out = [];
+    for (var i = 0; i < parts.length; i++) {
+      if (parts[i] === '' || parts[i] === '.') {
+        if (i === 0) out.push('');
+        continue;
+      }
+      if (parts[i] === '..') {
+        if (out.length > 1) out.pop();
+        continue;
+      }
+      out.push(parts[i]);
+    }
+    var path = out.join('/');
+    if (path.charAt(0) !== '/') path = '/' + path;
+    return base.scheme + '://' + base.host + path;
+  }
+
+  function extractMeta(html, pageUrl) {
+    var empty = { title: '', summary: '', image: '' };
     if (typeof html !== 'string' || !html) return empty;
     var source = html.length > MAX_HTML_CHARS ? html.slice(0, MAX_HTML_CHARS) : html;
+    var imageRaw = firstNonEmpty([
+      readMetaContent(source, 'og:image'),
+      readMetaContent(source, 'twitter:image'),
+      readLinkHref(source, 'image_src'),
+    ]);
     return {
       title: firstNonEmpty([
         readMetaContent(source, 'og:title'),
@@ -208,6 +269,7 @@ var Mnemosyne = (function () {
         readMetaContent(source, 'twitter:description'),
         readMetaContent(source, 'description'),
       ]),
+      image: resolveUrl(pageUrl, imageRaw),
     };
   }
 
@@ -218,15 +280,37 @@ var Mnemosyne = (function () {
       platform: detectPlatform(normalized),
       title: '',
       summary: '',
+      image: '',
       fetched: false,
     };
     if (!normalized) return preview;
     if (typeof httpStatus !== 'number' || httpStatus < 200 || httpStatus >= 300) return preview;
-    var meta = extractMeta(html);
+    var meta = extractMeta(html, typeof url === 'string' && url.trim() ? url.trim() : normalized);
     preview.title = meta.title;
     preview.summary = meta.summary;
+    preview.image = meta.image;
     preview.fetched = true;
     return preview;
+  }
+
+  function imageNeedsFetch(value) {
+    return String(value == null ? '' : value).trim() === '';
+  }
+
+  function pickImageBackfill(entries, limit) {
+    var n = Number(limit);
+    if (!n || n < 1) n = 25;
+    n = Math.floor(n);
+    var batch = [];
+    var pending = 0;
+    var list = entries || [];
+    for (var i = 0; i < list.length; i++) {
+      var item = list[i] && list[i].item ? list[i].item : list[i];
+      if (!item || !imageNeedsFetch(item.image)) continue;
+      pending += 1;
+      if (batch.length < n) batch.push(list[i]);
+    }
+    return { batch: batch, remaining: pending - batch.length };
   }
 
   function parseTags(value) {
@@ -338,6 +422,7 @@ var Mnemosyne = (function () {
   function buildNewItem(fields, fetched, nowIso, id) {
     var title = fetched && typeof fetched.title === 'string' ? fetched.title : '';
     var summary = fetched && typeof fetched.summary === 'string' ? fetched.summary : '';
+    var image = fetched && typeof fetched.image === 'string' ? fetched.image : '';
     return {
       id: id,
       url: fields.url,
@@ -349,6 +434,7 @@ var Mnemosyne = (function () {
       tags: parseTags(fields.tags),
       createdAt: nowIso,
       updatedAt: nowIso,
+      image: image,
     };
   }
 
@@ -364,6 +450,7 @@ var Mnemosyne = (function () {
       tags: parseTags(item.tags),
       createdAt: item.createdAt,
       updatedAt: item.updatedAt,
+      image: item.image == null ? '' : String(item.image),
     };
   }
 
@@ -438,6 +525,7 @@ var Mnemosyne = (function () {
     normalizeUrl: normalizeUrl,
     extractMeta: extractMeta,
     previewFromFetch: previewFromFetch,
+    pickImageBackfill: pickImageBackfill,
     parseTags: parseTags,
     serializeTags: serializeTags,
     rowToItem: rowToItem,

@@ -27,6 +27,7 @@ function sampleItem(overrides) {
       tags: ['news'],
       createdAt: NOW,
       updatedAt: NOW,
+      image: '',
     },
     overrides || {}
   );
@@ -95,10 +96,10 @@ test('extractMeta prefers Open Graph, then Twitter, then title and description',
       <meta property="og:title" content="og title">
       <meta property="og:description" content="og desc">
     </head></html>`;
-  assert.deepEqual(logic.extractMeta(full), { title: 'og title', summary: 'og desc' });
+  assert.deepEqual(logic.extractMeta(full), { title: 'og title', summary: 'og desc', image: '' });
 
   const swapped = '<meta content="Swapped &amp; ready" property="og:title"><meta content="Desc &#39;here&#39;" property="og:description">';
-  assert.deepEqual(logic.extractMeta(swapped), { title: 'Swapped & ready', summary: "Desc 'here'" });
+  assert.deepEqual(logic.extractMeta(swapped), { title: 'Swapped & ready', summary: "Desc 'here'", image: '' });
 
   const quoted = "<meta property='og:title' content='Single &quot;Q&quot;'>";
   assert.equal(logic.extractMeta(quoted).title, 'Single "Q"');
@@ -114,17 +115,64 @@ test('extractMeta prefers Open Graph, then Twitter, then title and description',
   assert.equal(logic.extractMeta(multiline).title, 'Multi line');
 
   const twitterOnly = '<meta name="twitter:title" content="T"><meta name="twitter:description" content="D"><title>Other</title>';
-  assert.deepEqual(logic.extractMeta(twitterOnly), { title: 'T', summary: 'D' });
+  assert.deepEqual(logic.extractMeta(twitterOnly), { title: 'T', summary: 'D', image: '' });
 
   const fallback = '<html><head><title>  Foo\n  &amp; Bar  </title><meta name="description" content="About"></head></html>';
-  assert.deepEqual(logic.extractMeta(fallback), { title: 'Foo & Bar', summary: 'About' });
+  assert.deepEqual(logic.extractMeta(fallback), { title: 'Foo & Bar', summary: 'About', image: '' });
 
   const emptyOg = '<meta property="og:title" content=""><meta property="og:title" content="Second"><title>Tag</title>';
   assert.equal(logic.extractMeta(emptyOg).title, 'Second');
 
-  assert.deepEqual(logic.extractMeta(''), { title: '', summary: '' });
-  assert.deepEqual(logic.extractMeta(null), { title: '', summary: '' });
-  assert.deepEqual(logic.extractMeta('<html><<not really'), { title: '', summary: '' });
+  assert.deepEqual(logic.extractMeta(''), { title: '', summary: '', image: '' });
+  assert.deepEqual(logic.extractMeta(null), { title: '', summary: '', image: '' });
+  assert.deepEqual(logic.extractMeta('<html><<not really'), { title: '', summary: '', image: '' });
+});
+
+test('extractMeta reads og:image, then twitter:image, then image_src', () => {
+  const page = 'https://example.com/news/story';
+  assert.equal(
+    logic.extractMeta('<meta property="og:image" content="https://cdn.example/og.jpg">', page).image,
+    'https://cdn.example/og.jpg'
+  );
+  assert.equal(
+    logic.extractMeta('<meta name="twitter:image" content="https://cdn.example/tw.jpg">', page).image,
+    'https://cdn.example/tw.jpg'
+  );
+  assert.equal(
+    logic.extractMeta(
+      '<meta property="og:image" content="https://cdn.example/og.jpg"><meta name="twitter:image" content="https://cdn.example/tw.jpg">',
+      page
+    ).image,
+    'https://cdn.example/og.jpg'
+  );
+  assert.equal(
+    logic.extractMeta('<meta property="og:image" content="/images/pic.jpg">', page).image,
+    'https://example.com/images/pic.jpg'
+  );
+  assert.equal(
+    logic.extractMeta('<meta property="og:image" content="images/pic.jpg">', page).image,
+    'https://example.com/news/images/pic.jpg'
+  );
+  assert.equal(
+    logic.extractMeta('<link rel="image_src" href="//cdn.example/x.jpg">', page).image,
+    'https://cdn.example/x.jpg'
+  );
+  assert.equal(logic.extractMeta('<title>No image</title>', page).image, '');
+});
+
+test('pickImageBackfill skips saved images and the empty marker', () => {
+  const entries = [
+    { item: { id: 'a', image: '' } },
+    { item: { id: 'b', image: '  ' } },
+    { item: { id: 'c', image: '-' } },
+    { item: { id: 'd', image: 'https://cdn.example/a.jpg' } },
+    { item: { id: 'e', image: '' } },
+  ];
+  const plan = logic.pickImageBackfill(entries, 1);
+  assert.equal(plan.batch.length, 1);
+  assert.equal(plan.batch[0].item.id, 'a');
+  assert.equal(plan.remaining, 2);
+  assert.equal(logic.pickImageBackfill(entries).batch.length, 3);
 });
 
 test('extractMeta ignores markup past the scan window', () => {
@@ -140,6 +188,7 @@ test('previewFromFetch keeps platform and blanks meta when the fetch fails', () 
     platform: 'x',
     title: 'Headline',
     summary: 'Deck',
+    image: '',
     fetched: true,
   });
   assert.deepEqual(logic.previewFromFetch('https://www.threads.net/@a/post/b/', 403, html), {
@@ -147,6 +196,7 @@ test('previewFromFetch keeps platform and blanks meta when the fetch fails', () 
     platform: 'threads',
     title: '',
     summary: '',
+    image: '',
     fetched: false,
   });
   const titleOnly = logic.previewFromFetch('https://example.com/story', 200, '<title>Example Domain</title>');
@@ -172,6 +222,7 @@ test('rowToItem and itemToRow round-trip tags and ISO times', () => {
     'hello world, later',
     NOW,
     NOW,
+    '',
   ]);
   assert.deepEqual(logic.rowToItem(row), item);
 
@@ -222,6 +273,7 @@ test('parseAddFields and buildNewItem fill platform, tags, and blank meta', () =
   assert.equal(item.platform, 'x');
   assert.equal(item.title, '');
   assert.equal(item.summary, '');
+  assert.equal(item.image, '');
   assert.equal(item.createdAt, NOW);
   assert.equal(item.updatedAt, NOW);
   assert.deepEqual(item.tags, ['閱讀', 'news', 'later']);

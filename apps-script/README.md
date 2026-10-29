@@ -36,7 +36,7 @@
 3. 若出現「Google 尚未驗證這個應用程式」，點 **進階**，再點 **前往（專案名稱）（不安全）**，然後 **允許**。這是你自己的腳本，權限用來修改這份試算表，以及讀取你存進去的網頁標題。
 4. 執行完成後回到試算表，會看到 `items` 分頁。第一列是：
 
-   `id`、`url`、`platform`、`title`、`summary`、`note`、`category`、`tags`、`createdAt`、`updatedAt`
+   `id`、`url`、`platform`、`title`、`summary`、`note`、`category`、`tags`、`createdAt`、`updatedAt`、`image`
 
 第一列要留著。`tags` 在表格裡是逗號分隔的文字，例如 `閱讀, 稍後`。時間是 UTC，長得像 `2026-10-29T12:34:56.000Z`。
 
@@ -119,3 +119,19 @@ await fetch(YOUR_EXEC_URL, {
 `unauthorized`、`bad_request`、`invalid_url`、`not_found`、`unknown_action`、`not_setup`、`method_not_allowed`、`busy`、`internal_error`。
 
 `not_setup` 表示還沒有正確的 `items` 分頁，再執行一次 `setup`。`GET` 只會回 `method_not_allowed`，不會讀寫資料。
+
+## 更新縮圖欄位
+
+若你已經部署過舊版，請再做一次這些事，網址不會變：
+
+1. 把 `Code.gs` 和 `logic.js` 再貼上一次，存檔。
+2. 函式選 `setup`，按 **執行**。這會在 `items` 最右邊補上 `image` 欄，原本的資料不會被改掉。
+3. **部署** → **管理部署作業** → **編輯**（鉛筆）→ 版本選 **新版本** → **部署**。
+
+舊的收藏沒有縮圖。可以分批補上（每次最多處理你給的筆數，預設 25）：
+
+```bash
+curl -L -sS -X POST "YOUR_EXEC_URL" -H "Content-Type: text/plain;charset=utf-8" --data "{\"key\":\"YOUR_KEY\",\"action\":\"backfillImages\",\"limit\":25}"
+```
+
+看到 `"remaining": 0` 就補完了。找不到圖的會記成 `-`，畫面就改顯示平台小圖。
