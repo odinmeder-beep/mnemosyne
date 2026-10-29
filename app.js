@@ -183,14 +183,20 @@ function errorMessage(err) {
 function callApi(action, extra) {
   var key = localStorage.getItem(STORAGE_KEY);
   var payload = { key: key, action: action };
+  var keepalive = false;
   if (extra) {
     Object.keys(extra).forEach(function (name) {
+      if (name === 'keepalive') {
+        keepalive = extra.keepalive === true;
+        return;
+      }
       payload[name] = extra[name];
     });
   }
   return fetch(DEFAULT_EXEC_URL, {
     method: 'POST',
     redirect: 'follow',
+    keepalive: keepalive,
     headers: { 'Content-Type': 'text/plain;charset=utf-8' },
     body: JSON.stringify(payload),
   }).then(function (response) {
@@ -273,6 +279,7 @@ function saveSharedNow() {
     note: '',
     category: '',
     tags: [],
+    keepalive: true,
   }).then(function (result) {
     if (result.duplicate) {
       showList();
@@ -1530,6 +1537,19 @@ confirmDeleteBtn.addEventListener('click', function () {
 localStorage.removeItem('mnemosyne.execUrl');
 rememberShareFromLocation();
 
+if ('serviceWorker' in navigator) {
+  var SW_RELOAD = 'mnemosyne.swReload';
+  sessionStorage.removeItem(SW_RELOAD);
+  navigator.serviceWorker.addEventListener('controllerchange', function () {
+    if (sessionStorage.getItem(SW_RELOAD) === '1') return;
+    sessionStorage.setItem(SW_RELOAD, '1');
+    location.reload();
+  });
+  window.addEventListener('load', function () {
+    navigator.serviceWorker.register('./sw.js').catch(function () {});
+  });
+}
+
 document.querySelector('.theme-choice').addEventListener('change', function (event) {
   var value = event.target && event.target.value;
   if (value !== 'dark' && value !== 'light' && value !== 'system') return;
@@ -1547,15 +1567,12 @@ if (!hasSettings()) {
   if (location.hash !== '#/settings') location.hash = '#/settings';
   else renderRoute();
 } else if (pendingShare()) {
-  saveSharedNow();
+  setTimeout(function () {
+    if (sessionStorage.getItem('mnemosyne.swReload') === '1') return;
+    saveSharedNow();
+  }, 0);
 } else if (!location.hash || location.hash === '#') {
   location.hash = '#/';
 } else {
   renderRoute();
-}
-
-if ('serviceWorker' in navigator) {
-  window.addEventListener('load', function () {
-    navigator.serviceWorker.register('./sw.js').catch(function () {});
-  });
 }
