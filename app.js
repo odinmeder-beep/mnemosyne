@@ -103,6 +103,63 @@ function isHttpUrl(value) {
   }
 }
 
+var SHARE_STORAGE = 'mnemosyne.share';
+
+function firstHttpUrl(value) {
+  var match = String(value == null ? '' : value).match(/https?:\/\/[^\s<>"']+/i);
+  if (!match) return '';
+  var raw = match[0].replace(/[)\].,;:!?，。、】）》」』]+$/g, '');
+  if (!isHttpUrl(raw)) return '';
+  return new URL(raw).href;
+}
+
+function sharedLinkFromParams(params) {
+  var fields = ['url', 'text', 'title'];
+  for (var i = 0; i < fields.length; i++) {
+    var found = firstHttpUrl(params.get(fields[i]));
+    if (found) return found;
+  }
+  return '';
+}
+
+function pendingShare() {
+  var raw = sessionStorage.getItem(SHARE_STORAGE);
+  if (!raw) return null;
+  try {
+    var parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object') return null;
+    return { url: typeof parsed.url === 'string' ? parsed.url : '' };
+  } catch (err) {
+    sessionStorage.removeItem(SHARE_STORAGE);
+    return null;
+  }
+}
+
+function rememberShareFromLocation() {
+  var params = new URLSearchParams(location.search);
+  if (params.get('share') !== '1') return;
+  sessionStorage.setItem(SHARE_STORAGE, JSON.stringify({ url: sharedLinkFromParams(params) }));
+  history.replaceState(null, '', location.pathname + location.hash);
+}
+
+function applySharedDraft() {
+  var shared = pendingShare();
+  if (!shared) return;
+  sessionStorage.removeItem(SHARE_STORAGE);
+  if (shared.url) {
+    itemUrl.value = shared.url;
+    onPreview();
+    return;
+  }
+  previewStatus.hidden = false;
+  previewStatus.textContent = '這次分享裡沒有找到連結。';
+}
+
+function openSharedAdd() {
+  if (location.hash !== '#/add') location.hash = '#/add';
+  else showForm(null);
+}
+
 function errorMessage(err) {
   var code = err && err.code;
   var messages = {
@@ -809,6 +866,7 @@ function showForm(id) {
       saveBtn.textContent = '儲存';
       formDelete.hidden = true;
       editingId = null;
+      applySharedDraft();
       return;
     }
     var item = null;
@@ -837,6 +895,11 @@ function showSettings() {
   secretKeyInput.type = 'password';
   toggleKey.textContent = '顯示金鑰';
   clearSettingsBtn.hidden = !hasSettings();
+  if (pendingShare()) {
+    settingsMessage.hidden = false;
+    settingsMessage.className = 'banner ok';
+    settingsMessage.textContent = '貼上金鑰後，會打開這次分享的新增頁。';
+  }
 }
 
 function renderRoute() {
@@ -1131,7 +1194,8 @@ settingsForm.addEventListener('submit', function (event) {
   }
   localStorage.removeItem('mnemosyne.execUrl');
   localStorage.setItem(STORAGE_KEY, key);
-  openList();
+  if (pendingShare()) openSharedAdd();
+  else openList();
 });
 
 clearSettingsBtn.addEventListener('click', function () {
@@ -1175,12 +1239,15 @@ confirmDeleteBtn.addEventListener('click', function () {
 });
 
 localStorage.removeItem('mnemosyne.execUrl');
+rememberShareFromLocation();
 
 window.addEventListener('hashchange', renderRoute);
 
 if (!hasSettings()) {
   if (location.hash !== '#/settings') location.hash = '#/settings';
   else renderRoute();
+} else if (pendingShare()) {
+  openSharedAdd();
 } else if (!location.hash || location.hash === '#') {
   location.hash = '#/';
 } else {
