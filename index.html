@@ -71,45 +71,68 @@
       <button type="button" id="show-more" class="ghost show-more" hidden>顯示更多</button>
     </section>
 
-    <section id="view-form" hidden>
-      <h2 id="form-heading">新增收藏</h2>
-      <form id="item-form">
-        <label for="item-url">網址</label>
-        <input id="item-url" name="url" type="url" inputmode="url" autocomplete="off" spellcheck="false" placeholder="https://" required>
-        <div class="url-actions">
-          <button type="button" id="preview-btn" class="ghost">讀取標題</button>
+    <div id="view-form" class="modal" hidden>
+      <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="form-heading">
+        <div class="modal-head">
+          <h2 id="form-heading">編輯書籤</h2>
+          <button type="button" id="form-close" class="ghost icon-close" aria-label="關閉">×</button>
         </div>
-        <p id="preview-status" class="hint field-note" role="status" hidden></p>
+        <form id="item-form">
+          <div class="modal-body">
+            <label for="item-url">URL</label>
+            <div class="url-line">
+              <input id="item-url" name="url" type="url" inputmode="url" autocomplete="off" spellcheck="false" placeholder="https://" required>
+              <button type="button" id="preview-btn" class="ghost">抓取資訊</button>
+            </div>
+            <p id="preview-status" class="hint field-note" role="status" hidden></p>
 
-        <label for="item-title">標題</label>
-        <input id="item-title" name="title" type="text" autocomplete="off">
+            <label for="item-title">標題</label>
+            <input id="item-title" name="title" type="text" autocomplete="off">
 
-        <label for="item-summary">摘要</label>
-        <textarea id="item-summary" name="summary" rows="3"></textarea>
+            <label for="item-summary">描述</label>
+            <textarea id="item-summary" name="summary" rows="4"></textarea>
 
-        <label for="item-note">備註</label>
-        <textarea id="item-note" name="note" rows="2"></textarea>
+            <section class="form-card">
+              <div class="field-head">
+                <span id="category-label">分類</span>
+                <button type="button" id="new-category" class="ghost">新增分類</button>
+              </div>
+              <input id="category-search" type="search" placeholder="搜尋分類" autocomplete="off" aria-labelledby="category-label">
+              <div id="category-list" class="cat-list" role="group" aria-labelledby="category-label"></div>
+              <div id="chosen-category" class="chosen" hidden></div>
+              <input id="item-category" name="category" type="hidden">
+            </section>
 
-        <div class="field-head">
-          <span id="category-label">分類</span>
-          <button type="button" id="new-category" class="ghost">新增分類</button>
-        </div>
-        <div id="chosen-category" class="chosen" hidden></div>
-        <input id="category-search" type="search" placeholder="搜尋分類" autocomplete="off" aria-labelledby="category-label">
-        <div id="category-list" class="cat-list" role="group" aria-labelledby="category-label"></div>
-        <input id="item-category" name="category" type="hidden">
+            <section class="form-card">
+              <label for="item-note">筆記</label>
+              <textarea id="item-note" name="note" rows="3" placeholder="新增筆記..."></textarea>
+            </section>
 
-        <label for="item-tags">標籤</label>
-        <input id="item-tags" name="tags" type="text" placeholder="閱讀, 稍後" autocomplete="off">
-        <p class="hint field-note">用逗號分隔</p>
+            <section class="form-card">
+              <div class="field-head">
+                <span id="tag-label">標籤</span>
+                <button type="button" id="new-tag" class="ghost">新增標籤</button>
+              </div>
+              <div id="new-tag-row" class="new-tag-row" hidden>
+                <input id="new-tag-name" type="text" placeholder="新標籤" autocomplete="off" aria-labelledby="tag-label">
+                <button type="button" id="new-tag-add" class="ghost">加入</button>
+              </div>
+              <input id="tag-search" type="search" placeholder="搜尋標籤" autocomplete="off" aria-labelledby="tag-label">
+              <div id="tag-list" class="cat-list" role="group" aria-labelledby="tag-label"></div>
+              <p id="tag-empty" class="tag-empty" hidden>尚未建立標籤</p>
+              <input id="item-tags" name="tags" type="hidden">
+            </section>
 
-        <p id="form-message" class="banner" role="status" hidden></p>
-        <div class="form-actions">
-          <button type="submit" id="save-btn">儲存</button>
-          <button type="button" id="form-delete" class="danger" hidden>刪除</button>
-        </div>
-      </form>
-    </section>
+            <p id="form-message" class="banner" role="status" hidden></p>
+            <button type="button" id="form-delete" class="danger" hidden>刪除</button>
+          </div>
+          <div class="modal-foot">
+            <button type="button" id="form-cancel" class="ghost">取消</button>
+            <button type="submit" id="save-btn">儲存</button>
+          </div>
+        </form>
+      </div>
+    </div>
 
     <section id="view-settings" hidden>
       <h2>設定</h2>

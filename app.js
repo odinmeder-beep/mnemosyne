@@ -249,10 +249,14 @@ function setHeader() {
 
 function setView(name) {
   currentView = name;
-  viewList.hidden = name !== 'list';
+  if (name !== 'form') viewList.hidden = name !== 'list';
   viewForm.hidden = name !== 'form';
   viewSettings.hidden = name !== 'settings';
   setHeader();
+}
+
+function closeItemForm() {
+  openList();
 }
 
 function hideConfirm() {
@@ -817,7 +821,12 @@ function clearItemForm() {
   var categorySearch = document.getElementById('category-search');
   if (categorySearch) categorySearch.value = '';
   itemTags.value = '';
+  var tagSearch = document.getElementById('tag-search');
+  if (tagSearch) tagSearch.value = '';
+  var newTagRow = document.getElementById('new-tag-row');
+  if (newTagRow) newTagRow.hidden = true;
   renderCategoryPicker();
+  renderTagPicker();
   previewStatus.hidden = true;
   previewStatus.textContent = '';
   clearFormMessage();
@@ -832,10 +841,82 @@ function fillItemForm(item) {
   itemNote.value = item.note || '';
   writeCategoryField(categoryNames(item));
   itemTags.value = Array.isArray(item.tags) ? item.tags.join(', ') : '';
+  var tagSearch = document.getElementById('tag-search');
+  if (tagSearch) tagSearch.value = '';
   renderCategoryPicker();
+  renderTagPicker();
   previewStatus.hidden = true;
   clearFormMessage();
   useFormMeta = true;
+}
+
+var extraTags = [];
+
+function knownTags() {
+  var seen = {};
+  var names = [];
+  function add(name) {
+    name = String(name || '').trim();
+    if (!name || seen[name]) return;
+    seen[name] = true;
+    names.push(name);
+  }
+  items.forEach(function (item) { tagsOf(item).forEach(add); });
+  extraTags.forEach(add);
+  parseTags(itemTags.value).forEach(add);
+  names.sort(function (a, b) { return a.localeCompare(b, 'zh-Hant'); });
+  return names;
+}
+
+function renderTagPicker() {
+  var list = document.getElementById('tag-list');
+  var empty = document.getElementById('tag-empty');
+  var search = document.getElementById('tag-search');
+  if (!list || !itemTags) return;
+  var selected = {};
+  parseTags(itemTags.value).forEach(function (name) { selected[name] = true; });
+  var query = search ? search.value.trim().toLowerCase() : '';
+  var all = knownTags();
+  list.replaceChildren();
+  all.forEach(function (name) {
+    if (query && name.toLowerCase().indexOf(query) === -1) return;
+    var line = document.createElement('label');
+    line.className = 'cat-row' + (selected[name] ? ' is-on' : '');
+    var box = document.createElement('input');
+    box.type = 'checkbox';
+    box.checked = Boolean(selected[name]);
+    box.addEventListener('change', function () {
+      var next = parseTags(itemTags.value);
+      var index = next.indexOf(name);
+      if (box.checked && index === -1) next.push(name);
+      if (!box.checked && index !== -1) next.splice(index, 1);
+      itemTags.value = next.join(', ');
+      renderTagPicker();
+    });
+    var label = document.createElement('span');
+    label.textContent = name;
+    line.append(box, label);
+    list.appendChild(line);
+  });
+  if (empty) empty.hidden = all.length > 0;
+}
+
+function addExtraTag() {
+  var input = document.getElementById('new-tag-name');
+  var row = document.getElementById('new-tag-row');
+  if (!input) return;
+  var name = input.value.trim();
+  if (!name) {
+    input.focus();
+    return;
+  }
+  if (extraTags.indexOf(name) === -1) extraTags.push(name);
+  var next = parseTags(itemTags.value);
+  if (next.indexOf(name) === -1) next.push(name);
+  itemTags.value = next.join(', ');
+  input.value = '';
+  if (row) row.hidden = true;
+  renderTagPicker();
 }
 
 function readFields() {
@@ -862,7 +943,7 @@ function showForm(id) {
     renderCategoryPicker();
     if (!id) {
       clearItemForm();
-      formHeading.textContent = '新增收藏';
+      formHeading.textContent = '新增書籤';
       saveBtn.textContent = '儲存';
       formDelete.hidden = true;
       editingId = null;
@@ -879,8 +960,8 @@ function showForm(id) {
       return;
     }
     fillItemForm(item);
-    formHeading.textContent = '編輯收藏';
-    saveBtn.textContent = '儲存變更';
+    formHeading.textContent = '編輯書籤';
+    saveBtn.textContent = '儲存';
     formDelete.hidden = false;
     editingId = id;
   });
@@ -1295,6 +1376,41 @@ formDelete.addEventListener('click', function () {
     if (items[i].id === editingId) item = items[i];
   }
   if (item) openConfirm(item);
+});
+document.getElementById('form-close').addEventListener('click', closeItemForm);
+document.getElementById('form-cancel').addEventListener('click', closeItemForm);
+viewForm.addEventListener('click', function (event) {
+  if (event.target === viewForm) closeItemForm();
+});
+document.addEventListener('keydown', function (event) {
+  if (event.key !== 'Escape') return;
+  if (!confirmBox.hidden) {
+    hideConfirm();
+    return;
+  }
+  if (categoryDialog && !categoryDialog.hidden) {
+    categoryDialog.hidden = true;
+    return;
+  }
+  if (!viewForm.hidden) closeItemForm();
+});
+document.getElementById('tag-search').addEventListener('input', renderTagPicker);
+document.getElementById('new-tag').addEventListener('click', function () {
+  var row = document.getElementById('new-tag-row');
+  row.hidden = false;
+  document.getElementById('new-tag-name').focus();
+});
+document.getElementById('new-tag-add').addEventListener('click', addExtraTag);
+document.getElementById('new-tag-name').addEventListener('keydown', function (event) {
+  if (event.key !== 'Enter') return;
+  event.preventDefault();
+  addExtraTag();
+});
+document.getElementById('category-search').addEventListener('keydown', function (event) {
+  if (event.key === 'Enter') event.preventDefault();
+});
+document.getElementById('tag-search').addEventListener('keydown', function (event) {
+  if (event.key === 'Enter') event.preventDefault();
 });
 
 document.getElementById('export-csv').addEventListener('click', function () {
