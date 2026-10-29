@@ -1006,6 +1006,92 @@ function openList() {
   else showList();
 }
 
+var EXPORT_COLUMNS = ['id', 'url', 'platform', 'title', 'summary', 'note', 'category', 'tags', 'createdAt', 'updatedAt', 'image'];
+
+function exportDate() {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Taipei',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(new Date());
+}
+
+function exportCell(item, key) {
+  var value = item ? item[key] : '';
+  if (key === 'tags') {
+    if (Array.isArray(value)) return value.join(', ');
+    return value == null ? '' : String(value);
+  }
+  if (key === 'category' && Array.isArray(value)) return value.join('; ');
+  return value == null ? '' : String(value);
+}
+
+function csvEscape(value) {
+  var text = value == null ? '' : String(value);
+  if (/[",\r\n]/.test(text)) return '"' + text.replace(/"/g, '""') + '"';
+  return text;
+}
+
+function buildCsv(list) {
+  var lines = [EXPORT_COLUMNS.join(',')];
+  (list || []).forEach(function (item) {
+    lines.push(EXPORT_COLUMNS.map(function (key) {
+      return csvEscape(exportCell(item, key));
+    }).join(','));
+  });
+  return '\uFEFF' + lines.join('\r\n') + '\r\n';
+}
+
+function buildJson(list) {
+  var rows = (list || []).map(function (item) {
+    var row = {};
+    EXPORT_COLUMNS.forEach(function (key) {
+      if (key === 'tags') {
+        row.tags = Array.isArray(item.tags) ? item.tags.slice() : parseTags(item.tags);
+      } else if (key === 'category' && Array.isArray(item.category)) {
+        row.category = item.category.slice();
+      } else {
+        row[key] = item[key] == null ? '' : item[key];
+      }
+    });
+    return row;
+  });
+  return JSON.stringify(rows, null, 2) + '\n';
+}
+
+function downloadText(filename, mime, text) {
+  var blob = new Blob([text], { type: mime });
+  var link = document.createElement('a');
+  link.href = URL.createObjectURL(blob);
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  setTimeout(function () { URL.revokeObjectURL(link.href); }, 1500);
+}
+
+function showExportMessage(text) {
+  var message = document.getElementById('export-message');
+  if (!message) return;
+  message.hidden = false;
+  message.textContent = text;
+}
+
+function exportItems(kind) {
+  if (!itemsLoaded) {
+    showExportMessage('請先回到清單讀取收藏，再匯出。');
+    return;
+  }
+  var date = exportDate();
+  if (kind === 'csv') {
+    downloadText('mnemosyne-' + date + '.csv', 'text/csv;charset=utf-8', buildCsv(items));
+  } else {
+    downloadText('mnemosyne-' + date + '.json', 'application/json;charset=utf-8', buildJson(items));
+  }
+  showExportMessage('已下載 ' + items.length + ' 則。');
+}
+
 var CATEGORY_SWATCHES = [
   '#e74c3c', '#e67e22', '#f1c40f', '#7cb342',
   '#2e7d32', '#00897b', '#3d8195', '#5dade2',
@@ -1181,6 +1267,13 @@ formDelete.addEventListener('click', function () {
     if (items[i].id === editingId) item = items[i];
   }
   if (item) openConfirm(item);
+});
+
+document.getElementById('export-csv').addEventListener('click', function () {
+  exportItems('csv');
+});
+document.getElementById('export-json').addEventListener('click', function () {
+  exportItems('json');
 });
 
 settingsForm.addEventListener('submit', function (event) {
