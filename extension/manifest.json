@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Mnemosyne",
   "description": "把目前的分頁存進 Mnemosyne",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "action": {
     "default_title": "存到 Mnemosyne",
     "default_popup": "popup.html",
