@@ -52,15 +52,61 @@ var Mnemosyne = (function () {
     return hostname === domain || hostname.endsWith('.' + domain);
   }
 
-  function detectPlatform(url) {
-    var hostname = '';
-    try {
-      var parsed = new URL(url);
-      if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return 'web';
-      hostname = parsed.hostname.toLowerCase().replace(/^www\./, '');
-    } catch (err) {
-      return 'web';
+  // Apps Script V8 has no URL constructor. Parse http(s) links directly.
+  function parseHttpUrl(input) {
+    if (typeof input !== 'string') return null;
+    var trimmed = input.trim();
+    if (!trimmed || trimmed.length > MAX_URL_LENGTH) return null;
+    if (/[\u0000-\u0020\u007f]/.test(trimmed)) return null;
+
+    var match = /^([a-z][a-z0-9+.-]*):\/\/([^/?#]*)([^?#]*)(\?[^#]*)?(#.*)?$/i.exec(trimmed);
+    if (!match) return null;
+
+    var scheme = match[1].toLowerCase();
+    if (scheme !== 'http' && scheme !== 'https') return null;
+
+    var authority = match[2];
+    if (!authority) return null;
+    var at = authority.lastIndexOf('@');
+    var hostport = at === -1 ? authority : authority.slice(at + 1);
+    if (!hostport || hostport.indexOf('[') !== -1 || hostport.indexOf(']') !== -1) return null;
+
+    var hostname = hostport;
+    var port = '';
+    var colon = hostport.lastIndexOf(':');
+    if (colon !== -1) {
+      if (hostport.indexOf(':') !== colon) return null;
+      hostname = hostport.slice(0, colon);
+      port = hostport.slice(colon + 1);
+      if (!/^\d+$/.test(port)) return null;
+      var portNumber = parseInt(port, 10);
+      if (portNumber < 0 || portNumber > 65535) return null;
+      if ((scheme === 'https' && portNumber === 443) || (scheme === 'http' && portNumber === 80)) {
+        port = '';
+      } else {
+        port = String(portNumber);
+      }
     }
+
+    hostname = hostname.toLowerCase();
+    if (!hostname) return null;
+
+    var pathname = match[3] || '';
+    if (!pathname) pathname = '/';
+    if (pathname.length > 1 && pathname.charAt(pathname.length - 1) === '/') {
+      pathname = pathname.slice(0, -1);
+    }
+
+    return {
+      href: scheme + '://' + hostname + (port ? ':' + port : '') + pathname + (match[4] || ''),
+      hostname: hostname,
+    };
+  }
+
+  function detectPlatform(url) {
+    var parsed = parseHttpUrl(url);
+    if (!parsed) return 'web';
+    var hostname = parsed.hostname.replace(/^www\./, '');
     if (hostIs(hostname, 'threads.net') || hostIs(hostname, 'threads.com')) return 'threads';
     if (hostIs(hostname, 'instagram.com') || hostIs(hostname, 'instagr.am')) return 'instagram';
     if (
@@ -76,22 +122,8 @@ var Mnemosyne = (function () {
   }
 
   function normalizeUrl(input) {
-    if (typeof input !== 'string') return '';
-    var trimmed = input.trim();
-    if (!trimmed || trimmed.length > MAX_URL_LENGTH) return '';
-    try {
-      var parsed = new URL(trimmed);
-      if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return '';
-      parsed.username = '';
-      parsed.password = '';
-      parsed.hash = '';
-      if (parsed.pathname.length > 1 && parsed.pathname.endsWith('/')) {
-        parsed.pathname = parsed.pathname.slice(0, -1);
-      }
-      return parsed.href;
-    } catch (err) {
-      return '';
-    }
+    var parsed = parseHttpUrl(input);
+    return parsed ? parsed.href : '';
   }
 
   function decodeHtmlEntities(text) {
