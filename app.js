@@ -714,7 +714,12 @@ function onSaveItem(event) {
   }).then(done);
 }
 
-navBack.addEventListener('click', function () { location.hash = '#/'; });
+function openList() {
+  if ((location.hash || '#/') !== '#/') location.hash = '#/';
+  else showList();
+}
+
+navBack.addEventListener('click', function () { openList(); });
 navAdd.addEventListener('click', function () { location.hash = '#/add'; });
 navSettings.addEventListener('click', function () { location.hash = '#/settings'; });
 document.getElementById('empty-add').addEventListener('click', function () { location.hash = '#/add'; });
@@ -750,19 +755,20 @@ sortSelect.addEventListener('change', function () {
   visibleLimit = PAGE_SIZE;
   renderResults();
 });
-function onFilterChip(event, apply) {
+function onFilterChip(event, current, assign) {
   var button = event.target.closest('button');
   if (!button) return;
-  apply(button.getAttribute('data-value') || '');
+  var value = button.getAttribute('data-value') || '';
+  assign(value && value === current ? '' : value);
   visibleLimit = PAGE_SIZE;
   renderFilterChips();
   renderResults();
 }
 platformFilters.addEventListener('click', function (event) {
-  onFilterChip(event, function (value) { platformFilter = value; });
+  onFilterChip(event, platformFilter, function (value) { platformFilter = value; });
 });
 categoryFilters.addEventListener('click', function (event) {
-  onFilterChip(event, function (value) { categoryFilter = value; });
+  onFilterChip(event, categoryFilter, function (value) { categoryFilter = value; });
 });
 showMoreBtn.addEventListener('click', function () {
   visibleLimit += PAGE_SIZE;
@@ -798,8 +804,7 @@ settingsForm.addEventListener('submit', function (event) {
   }
   localStorage.setItem(STORAGE_URL, url);
   localStorage.setItem(STORAGE_KEY, key);
-  if ((location.hash || '#/') === '#/') showList();
-  else location.hash = '#/';
+  openList();
 });
 
 clearSettingsBtn.addEventListener('click', function () {
