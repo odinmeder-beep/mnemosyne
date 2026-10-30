@@ -71,6 +71,7 @@ var itemSummary = document.getElementById('item-summary');
 var itemNote = document.getElementById('item-note');
 var itemCategory = document.getElementById('item-category');
 var itemTags = document.getElementById('item-tags');
+var pasteBtn = document.getElementById('paste-btn');
 var previewBtn = document.getElementById('preview-btn');
 var previewStatus = document.getElementById('preview-status');
 var formMessage = document.getElementById('form-message');
@@ -110,7 +111,7 @@ var SHARE_STORAGE = 'mnemosyne.share';
 function firstHttpUrl(value) {
   var match = String(value == null ? '' : value).match(/https?:\/\/[^\s<>"']+/i);
   if (!match) return '';
-  var raw = match[0].replace(/[)\].,;:!?，。、】）》」』]+$/g, '');
+  var raw = match[0].replace(/[\u4e00-\u9fa5\u3000-\u303f\uff00-\uffef)\].,;:!?，。、】）》」』]+$/g, '');
   if (!isHttpUrl(raw)) return '';
   return new URL(raw).href;
 }
@@ -118,8 +119,11 @@ function firstHttpUrl(value) {
 function sharedLinkFromParams(params) {
   var fields = ['url', 'text', 'title'];
   for (var i = 0; i < fields.length; i++) {
-    var found = firstHttpUrl(params.get(fields[i]));
-    if (found) return found;
+    var val = params.get(fields[i]);
+    if (val) {
+      var found = firstHttpUrl(val);
+      if (found) return found;
+    }
   }
   return '';
 }
@@ -139,9 +143,12 @@ function pendingShare() {
 
 function rememberShareFromLocation() {
   var params = new URLSearchParams(location.search);
-  if (params.get('share') !== '1') return;
-  sessionStorage.setItem(SHARE_STORAGE, JSON.stringify({ url: sharedLinkFromParams(params) }));
+  var isShare = params.get('share') === '1' || params.has('url') || params.has('text') || params.has('title');
+  if (!isShare) return false;
+  var link = sharedLinkFromParams(params);
+  sessionStorage.setItem(SHARE_STORAGE, JSON.stringify({ url: link }));
   history.replaceState(null, '', location.pathname + location.hash);
+  return true;
 }
 
 function applySharedDraft() {
@@ -269,11 +276,13 @@ function saveSharedNow() {
   var shared = pendingShare();
   if (!shared) return;
   sessionStorage.removeItem(SHARE_STORAGE);
+  location.hash = '#/';
   showList();
   if (!shared.url) {
     showShareNotice('這次分享裡沒有找到連結。', null, false);
     return;
   }
+  showShareNotice('正在儲存收藏...', null, true);
   callApi('add', {
     url: shared.url,
     note: '',
@@ -1426,6 +1435,22 @@ showMoreBtn.addEventListener('click', function () {
   renderResults();
 });
 previewBtn.addEventListener('click', onPreview);
+if (pasteBtn) {
+  pasteBtn.addEventListener('click', function () {
+    if (!navigator.clipboard || !navigator.clipboard.readText) {
+      itemUrl.focus();
+      return;
+    }
+    navigator.clipboard.readText().then(function (text) {
+      if (!text) return;
+      var found = firstHttpUrl(text);
+      itemUrl.value = found || text.trim();
+      if (itemUrl.value) onPreview();
+    }).catch(function () {
+      itemUrl.focus();
+    });
+  });
+}
 itemTitle.addEventListener('input', function () { useFormMeta = true; });
 itemSummary.addEventListener('input', function () { useFormMeta = true; });
 itemForm.addEventListener('submit', onSaveItem);
@@ -1563,16 +1588,35 @@ syncThemeControls();
 
 window.addEventListener('hashchange', renderRoute);
 
+function processPendingShareIfAny() {
+  if (pendingShare()) {
+    setTimeout(function () {
+      if (sessionStorage.getItem('mnemosyne.swReload') === '1') return;
+      saveSharedNow();
+    }, 0);
+    return true;
+  }
+  return false;
+}
+
 if (!hasSettings()) {
   if (location.hash !== '#/settings') location.hash = '#/settings';
   else renderRoute();
-} else if (pendingShare()) {
-  setTimeout(function () {
-    if (sessionStorage.getItem('mnemosyne.swReload') === '1') return;
-    saveSharedNow();
-  }, 0);
-} else if (!location.hash || location.hash === '#') {
-  location.hash = '#/';
-} else {
-  renderRoute();
+} else if (!processPendingShareIfAny()) {
+  if (!location.hash || location.hash === '#') {
+    location.hash = '#/';
+  } else {
+    renderRoute();
+  }
 }
+
+window.addEventListener('pageshow', function () {
+  if (rememberShareFromLocation()) {
+    if (!hasSettings()) {
+      if (location.hash !== '#/settings') location.hash = '#/settings';
+      else renderRoute();
+    } else {
+      processPendingShareIfAny();
+    }
+  }
+});
