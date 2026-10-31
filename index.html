@@ -38,6 +38,7 @@
       <div class="header-actions">
         <button type="button" id="nav-back" class="ghost" hidden>返回</button>
         <button type="button" id="nav-add" class="ghost" hidden>新增</button>
+        <button type="button" id="nav-manage" class="ghost">管理</button>
         <button type="button" id="nav-settings" class="ghost">設定</button>
       </div>
     </header>
@@ -158,6 +159,13 @@
           <button type="button" id="clear-settings" class="ghost" hidden>清除這台裝置上的設定</button>
         </div>
       </form>
+      <div class="settings-manage">
+        <p class="hint filter-label">資料管理</p>
+        <p class="hint">管理所有分類與標籤名稱、層級及關聯。</p>
+        <div class="form-actions">
+          <button type="button" id="settings-to-manage" class="ghost">分類與標籤管理</button>
+        </div>
+      </div>
       <div class="backup">
         <p class="hint filter-label">備份</p>
         <p class="hint">下載這台裝置已經讀取的收藏。</p>
@@ -166,6 +174,30 @@
           <button type="button" id="export-json" class="ghost">匯出 JSON</button>
         </div>
         <p id="export-message" class="hint" role="status" hidden></p>
+      </div>
+    </section>
+
+    <section id="view-manage" hidden>
+      <h2>分類與標籤管理</h2>
+
+      <div class="manage-section">
+        <div class="manage-head">
+          <h3>分類</h3>
+          <button type="button" id="manage-new-category" class="ghost">新增分類</button>
+        </div>
+        <div id="manage-category-list" class="manage-list"></div>
+      </div>
+
+      <div class="manage-section">
+        <div class="manage-head">
+          <h3>標籤</h3>
+        </div>
+        <div class="manage-tag-add-row">
+          <input id="manage-new-tag-name" type="text" placeholder="新標籤名稱" autocomplete="off">
+          <button type="button" id="manage-new-tag-add" class="ghost">新增標籤</button>
+        </div>
+        <input id="manage-tag-search" type="search" placeholder="搜尋標籤" autocomplete="off">
+        <div id="manage-tag-list" class="manage-list"></div>
       </div>
     </section>
   </div>
@@ -183,7 +215,7 @@
 
   <div id="category-dialog" class="confirm" hidden>
     <form id="category-form" class="confirm-card">
-      <h2>新增分類</h2>
+      <h2 id="cat-dialog-title">新增分類</h2>
       <label for="new-cat-name">分類名稱</label>
       <input id="new-cat-name" type="text" placeholder="例如：科技、設計..." autocomplete="off" required>
       <label for="new-cat-parent">父分類</label>
@@ -200,6 +232,20 @@
       <div class="form-actions">
         <button type="button" id="cat-cancel" class="ghost">取消</button>
         <button type="submit" id="cat-create">建立</button>
+      </div>
+    </form>
+  </div>
+
+  <div id="tag-dialog" class="confirm" hidden>
+    <form id="tag-form" class="confirm-card">
+      <h2>修改標籤名稱</h2>
+      <label for="edit-tag-name">標籤名稱</label>
+      <input id="edit-tag-name" type="text" autocomplete="off" required>
+      <p class="hint">若新名稱已存在，將會自動合併。</p>
+      <p id="tag-dialog-message" class="banner" role="status" hidden></p>
+      <div class="form-actions">
+        <button type="button" id="tag-cancel" class="ghost">取消</button>
+        <button type="submit" id="tag-submit">儲存</button>
       </div>
     </form>
   </div>

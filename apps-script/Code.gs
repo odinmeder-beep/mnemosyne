@@ -79,6 +79,10 @@ function dispatch_(body) {
   if (action === 'listCategories') return handleListCategories_();
   if (action === 'addCategory') return handleAddCategory_(body);
   if (action === 'updateCategory') return handleUpdateCategory_(body);
+  if (action === 'renameCategory') return handleRenameCategory_(body);
+  if (action === 'deleteCategory') return handleDeleteCategory_(body);
+  if (action === 'renameTag') return handleRenameTag_(body);
+  if (action === 'deleteTag') return handleDeleteTag_(body);
   return { ok: false, error: 'unknown_action' };
 }
 
@@ -347,6 +351,128 @@ function handleUpdateCategory_(body) {
       return { ok: true, category: planned.category };
     }
     return { ok: false, error: 'not_found' };
+  });
+}
+
+function handleRenameCategory_(body) {
+  var from = body && typeof body.from === 'string' ? body.from.trim() : '';
+  var to = body && typeof body.to === 'string' ? body.to.trim() : '';
+  if (!from || !to) return { ok: false, error: 'bad_request' };
+  var now = new Date().toISOString();
+  return withLock_(function () {
+    var loadedCats = readCategories_();
+    var planned = Mnemosyne.planRenameCategory(loadedCats.categories, from, to);
+    if (!planned.ok) return planned;
+
+    var catRows = planned.categories.map(function (c) {
+      return [c.name, c.color, c.parent, c.createdAt];
+    });
+    if (catRows.length > 0) {
+      loadedCats.sheet.getRange(2, 1, catRows.length, Mnemosyne.CATEGORY_HEADERS.length).setValues(catRows);
+    }
+
+    var itemsSheet = getItemsSheet_();
+    var lastRow = itemsSheet.getLastRow();
+    var changed = 0;
+    if (lastRow >= 2) {
+      var width = Mnemosyne.ITEMS_HEADERS.length;
+      var range = itemsSheet.getRange(2, 1, lastRow - 1, width);
+      var values = range.getValues();
+      var res = Mnemosyne.renameCategoryInItems(values, from, to, now);
+      changed = res.changed;
+      if (changed > 0) {
+        range.setValues(values);
+      }
+    }
+    return { ok: true, changed: changed, category: planned.category };
+  });
+}
+
+function handleDeleteCategory_(body) {
+  var name = body && typeof body.name === 'string' ? body.name.trim() : '';
+  if (!name) return { ok: false, error: 'bad_request' };
+  var now = new Date().toISOString();
+  return withLock_(function () {
+    var loadedCats = readCategories_();
+    var planned = Mnemosyne.planDeleteCategory(loadedCats.categories, name);
+    if (!planned.ok) return planned;
+
+    var lastCatRow = loadedCats.sheet.getLastRow();
+    if (lastCatRow >= 2) {
+      var catNames = loadedCats.sheet.getRange(2, 1, lastCatRow - 1, 1).getValues();
+      for (var r = 0; r < catNames.length; r++) {
+        if (String(catNames[r][0] || '').trim() === name) {
+          loadedCats.sheet.deleteRow(r + 2);
+          break;
+        }
+      }
+    }
+    if (planned.categories.length > 0) {
+      var catRows = planned.categories.map(function (c) {
+        return [c.name, c.color, c.parent, c.createdAt];
+      });
+      loadedCats.sheet.getRange(2, 1, catRows.length, Mnemosyne.CATEGORY_HEADERS.length).setValues(catRows);
+    }
+
+    var itemsSheet = getItemsSheet_();
+    var lastRow = itemsSheet.getLastRow();
+    var changed = 0;
+    if (lastRow >= 2) {
+      var width = Mnemosyne.ITEMS_HEADERS.length;
+      var range = itemsSheet.getRange(2, 1, lastRow - 1, width);
+      var values = range.getValues();
+      var res = Mnemosyne.deleteCategoryFromItems(values, name, now);
+      changed = res.changed;
+      if (changed > 0) {
+        range.setValues(values);
+      }
+    }
+    return { ok: true, changed: changed };
+  });
+}
+
+function handleRenameTag_(body) {
+  var from = body && typeof body.from === 'string' ? body.from.trim() : '';
+  var to = body && typeof body.to === 'string' ? body.to.trim() : '';
+  if (!from || !to) return { ok: false, error: 'bad_request' };
+  var now = new Date().toISOString();
+  return withLock_(function () {
+    var itemsSheet = getItemsSheet_();
+    var lastRow = itemsSheet.getLastRow();
+    var changed = 0;
+    if (lastRow >= 2) {
+      var width = Mnemosyne.ITEMS_HEADERS.length;
+      var range = itemsSheet.getRange(2, 1, lastRow - 1, width);
+      var values = range.getValues();
+      var res = Mnemosyne.renameTagInItems(values, from, to, now);
+      changed = res.changed;
+      if (changed > 0) {
+        range.setValues(values);
+      }
+    }
+    return { ok: true, changed: changed };
+  });
+}
+
+function handleDeleteTag_(body) {
+  var name = body && typeof body.name === 'string' ? body.name.trim() : '';
+  if (!name) return { ok: false, error: 'bad_request' };
+  var now = new Date().toISOString();
+  return withLock_(function () {
+    var itemsSheet = getItemsSheet_();
+    var lastRow = itemsSheet.getLastRow();
+    var changed = 0;
+    if (lastRow >= 2) {
+      var width = Mnemosyne.ITEMS_HEADERS.length;
+      var range = itemsSheet.getRange(2, 1, lastRow - 1, width);
+      var values = range.getValues();
+      var res = Mnemosyne.deleteTagFromItems(values, name, now);
+      changed = res.changed;
+      if (changed > 0) {
+        range.setValues(values);
+      }
+    }
+    return { ok: true, changed: changed };
   });
 }
 

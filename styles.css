@@ -623,3 +623,109 @@ button.swatch.is-on {
   .wrap { padding-top: 1.5rem; }
   .confirm { align-items: center; }
 }
+
+.settings-manage {
+  margin-top: 1.5rem;
+  padding-top: 1.25rem;
+  border-top: 1px solid var(--line);
+}
+
+.manage-section {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 1.1rem;
+  margin-bottom: 1.25rem;
+}
+
+.manage-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.85rem;
+}
+
+.manage-head h3 {
+  margin: 0;
+  font-size: 1.15rem;
+  color: var(--ink);
+}
+
+.manage-tag-add-row {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  margin-bottom: 0.75rem;
+}
+
+.manage-tag-add-row input {
+  flex: 1;
+  min-width: 0;
+}
+
+.manage-list {
+  display: flex;
+  flex-direction: column;
+  margin-top: 0.75rem;
+}
+
+.manage-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  padding: 0.55rem 0.5rem;
+  border-bottom: 1px solid var(--line);
+  transition: background 0.12s ease;
+}
+
+.manage-item:last-child {
+  border-bottom: none;
+}
+
+.manage-item:hover {
+  background: var(--note);
+}
+
+.manage-info {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+  flex: 1;
+}
+
+.manage-name {
+  font-weight: 500;
+  color: var(--ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.manage-count {
+  font-size: 0.82rem;
+  color: var(--muted);
+  flex-shrink: 0;
+}
+
+.manage-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex-shrink: 0;
+}
+
+.manage-actions button {
+  margin: 0;
+  padding: 0.25rem 0.6rem;
+  min-height: 32px;
+  font-size: 0.84rem;
+}
+
+.manage-empty {
+  padding: 1rem 0;
+  color: var(--muted);
+  font-size: 0.9rem;
+  text-align: center;
+}

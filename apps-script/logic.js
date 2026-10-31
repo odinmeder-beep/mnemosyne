@@ -729,6 +729,214 @@ var Mnemosyne = (function () {
     });
   }
 
+  function planRenameCategory(categories, from, to) {
+    var fromName = String(from || '').trim();
+    var toName = String(to || '').trim();
+    if (!fromName || !toName) return { ok: false, error: 'bad_request' };
+    if (fromName === toName) return { ok: false, error: 'bad_request' };
+    var list = categories || [];
+    if (!duplicateCategory(list, fromName)) return { ok: false, error: 'not_found' };
+    if (duplicateCategory(list, toName)) return { ok: false, error: 'duplicate' };
+    var updated = [];
+    var targetCategory = null;
+    for (var i = 0; i < list.length; i++) {
+      var c = list[i];
+      var name = c.name === fromName ? toName : c.name;
+      var parent = c.parent === fromName ? toName : (c.parent || '');
+      var row = {
+        name: name,
+        color: c.color || '',
+        parent: parent,
+        createdAt: c.createdAt || '',
+      };
+      if (c.name === fromName) targetCategory = row;
+      updated.push(row);
+    }
+    return { ok: true, categories: updated, category: targetCategory };
+  }
+
+  function planDeleteCategory(categories, name) {
+    var targetName = String(name || '').trim();
+    if (!targetName) return { ok: false, error: 'bad_request' };
+    var list = categories || [];
+    var found = null;
+    for (var i = 0; i < list.length; i++) {
+      if (String(list[i].name || '').trim() === targetName) {
+        found = list[i];
+        break;
+      }
+    }
+    if (!found) return { ok: false, error: 'not_found' };
+    var fallbackParent = found.parent ? String(found.parent).trim() : '';
+    var updated = [];
+    for (var j = 0; j < list.length; j++) {
+      var c = list[j];
+      if (String(c.name || '').trim() === targetName) continue;
+      var parent = String(c.parent || '').trim() === targetName ? fallbackParent : (c.parent || '');
+      updated.push({
+        name: c.name,
+        color: c.color || '',
+        parent: parent,
+        createdAt: c.createdAt || '',
+      });
+    }
+    return { ok: true, categories: updated, fallbackParent: fallbackParent };
+  }
+
+  function renameCategoryInItems(items, from, to, nowIso) {
+    var fromName = String(from || '').trim();
+    var toName = String(to || '').trim();
+    if (!fromName || !toName) return { ok: false, error: 'bad_request' };
+    if (fromName === toName) return { ok: false, error: 'bad_request' };
+    var list = items || [];
+    var changed = 0;
+    for (var i = 0; i < list.length; i++) {
+      var item = list[i];
+      var isRow = Array.isArray(item);
+      var rawCat = isRow ? item[6] : (item ? item.category : '');
+      var catNames = parseCategoryList(rawCat);
+      var hasFrom = false;
+      for (var j = 0; j < catNames.length; j++) {
+        if (catNames[j] === fromName) {
+          hasFrom = true;
+          break;
+        }
+      }
+      if (hasFrom) {
+        var next = [];
+        var seen = {};
+        for (var k = 0; k < catNames.length; k++) {
+          var n = catNames[k] === fromName ? toName : catNames[k];
+          if (!seen[n]) {
+            seen[n] = true;
+            next.push(n);
+          }
+        }
+        if (isRow) {
+          item[6] = serializeCategoryList(next);
+          if (nowIso && item.length > 9) item[9] = nowIso;
+        } else if (item) {
+          item.category = next;
+          if (nowIso) item.updatedAt = nowIso;
+        }
+        changed += 1;
+      }
+    }
+    return { ok: true, changed: changed, items: list };
+  }
+
+  function deleteCategoryFromItems(items, name, nowIso) {
+    var targetName = String(name || '').trim();
+    if (!targetName) return { ok: false, error: 'bad_request' };
+    var list = items || [];
+    var changed = 0;
+    for (var i = 0; i < list.length; i++) {
+      var item = list[i];
+      var isRow = Array.isArray(item);
+      var rawCat = isRow ? item[6] : (item ? item.category : '');
+      var catNames = parseCategoryList(rawCat);
+      var hasTarget = false;
+      for (var j = 0; j < catNames.length; j++) {
+        if (catNames[j] === targetName) {
+          hasTarget = true;
+          break;
+        }
+      }
+      if (hasTarget) {
+        var next = [];
+        for (var k = 0; k < catNames.length; k++) {
+          if (catNames[k] !== targetName) next.push(catNames[k]);
+        }
+        if (isRow) {
+          item[6] = serializeCategoryList(next);
+          if (nowIso && item.length > 9) item[9] = nowIso;
+        } else if (item) {
+          item.category = next;
+          if (nowIso) item.updatedAt = nowIso;
+        }
+        changed += 1;
+      }
+    }
+    return { ok: true, changed: changed, items: list };
+  }
+
+  function renameTagInItems(items, from, to, nowIso) {
+    var fromTag = String(from || '').trim();
+    var toTag = String(to || '').trim();
+    if (!fromTag || !toTag) return { ok: false, error: 'bad_request' };
+    if (fromTag === toTag) return { ok: false, error: 'bad_request' };
+    var list = items || [];
+    var changed = 0;
+    for (var i = 0; i < list.length; i++) {
+      var item = list[i];
+      var isRow = Array.isArray(item);
+      var rawTags = isRow ? item[7] : (item ? item.tags : '');
+      var tagList = parseTags(rawTags);
+      var hasFrom = false;
+      for (var j = 0; j < tagList.length; j++) {
+        if (tagList[j] === fromTag) {
+          hasFrom = true;
+          break;
+        }
+      }
+      if (hasFrom) {
+        var next = [];
+        var seen = {};
+        for (var k = 0; k < tagList.length; k++) {
+          var t = tagList[k] === fromTag ? toTag : tagList[k];
+          if (!seen[t]) {
+            seen[t] = true;
+            next.push(t);
+          }
+        }
+        if (isRow) {
+          item[7] = serializeTags(next);
+          if (nowIso && item.length > 9) item[9] = nowIso;
+        } else if (item) {
+          item.tags = next;
+          if (nowIso) item.updatedAt = nowIso;
+        }
+        changed += 1;
+      }
+    }
+    return { ok: true, changed: changed, items: list };
+  }
+
+  function deleteTagFromItems(items, name, nowIso) {
+    var targetTag = String(name || '').trim();
+    if (!targetTag) return { ok: false, error: 'bad_request' };
+    var list = items || [];
+    var changed = 0;
+    for (var i = 0; i < list.length; i++) {
+      var item = list[i];
+      var isRow = Array.isArray(item);
+      var rawTags = isRow ? item[7] : (item ? item.tags : '');
+      var tagList = parseTags(rawTags);
+      var hasTarget = false;
+      for (var j = 0; j < tagList.length; j++) {
+        if (tagList[j] === targetTag) {
+          hasTarget = true;
+          break;
+        }
+      }
+      if (hasTarget) {
+        var next = [];
+        for (var k = 0; k < tagList.length; k++) {
+          if (tagList[k] !== targetTag) next.push(tagList[k]);
+        }
+        if (isRow) {
+          item[7] = serializeTags(next);
+          if (nowIso && item.length > 9) item[9] = nowIso;
+        } else if (item) {
+          item.tags = next;
+          if (nowIso) item.updatedAt = nowIso;
+        }
+        changed += 1;
+      }
+    }
+    return { ok: true, changed: changed, items: list };
+  }
+
   return {
     ITEMS_HEADERS: ITEMS_HEADERS,
     USER_FIELDS: USER_FIELDS,
@@ -758,6 +966,12 @@ var Mnemosyne = (function () {
     applyUpdate: applyUpdate,
     findDuplicate: findDuplicate,
     sortNewestFirst: sortNewestFirst,
+    planRenameCategory: planRenameCategory,
+    planDeleteCategory: planDeleteCategory,
+    renameCategoryInItems: renameCategoryInItems,
+    deleteCategoryFromItems: deleteCategoryFromItems,
+    renameTagInItems: renameTagInItems,
+    deleteTagFromItems: deleteTagFromItems,
   };
 })();
 

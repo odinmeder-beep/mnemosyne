@@ -400,6 +400,120 @@ test('itemMatchesCategory includes child categories and planUpdateCategory block
   assert.equal(logic.planUpdateCategory(categories, { name: '景點的🌸', color: '#112233' }).category.color, '#112233');
 });
 
+test('planRenameCategory and renameCategoryInItems update names, parents, and items with deduplication', () => {
+  const categories = [
+    { name: '食物', color: '#e74c3c', parent: '', createdAt: NOW },
+    { name: '拉麵', color: '#e67e22', parent: '食物', createdAt: NOW },
+    { name: '景點', color: '#3d8195', parent: '', createdAt: NOW },
+  ];
+  assert.equal(logic.planRenameCategory(categories, '', '美食').error, 'bad_request');
+  assert.equal(logic.planRenameCategory(categories, '食物', '食物').error, 'bad_request');
+  assert.equal(logic.planRenameCategory(categories, '沒有', '美食').error, 'not_found');
+  assert.equal(logic.planRenameCategory(categories, '食物', '拉麵').error, 'duplicate');
+
+  const renamed = logic.planRenameCategory(categories, '食物', '美食');
+  assert.equal(renamed.ok, true);
+  assert.equal(renamed.category.name, '美食');
+  assert.equal(renamed.categories.find((c) => c.name === '美食').parent, '');
+  assert.equal(renamed.categories.find((c) => c.name === '拉麵').parent, '美食');
+
+  // Test with item objects
+  const items = [
+    sampleItem({ id: '1', category: ['食物', '拉麵'] }),
+    sampleItem({ id: '2', category: '食物; 景點' }),
+    sampleItem({ id: '3', category: ['景點'] }),
+  ];
+  const res1 = logic.renameCategoryInItems(items, '食物', '拉麵', LATER);
+  assert.equal(res1.ok, true);
+  assert.equal(res1.changed, 2);
+  assert.deepEqual(items[0].category, ['拉麵']); // deduplicated!
+  assert.deepEqual(items[1].category, ['拉麵', '景點']);
+  assert.deepEqual(items[2].category, ['景點']);
+  assert.equal(items[0].updatedAt, LATER);
+
+  // Test with sheet row arrays
+  const rows = [
+    ['1', 'url', 'web', 't', 's', 'n', '食物; 景點', 'tag1', NOW, NOW, ''],
+    ['2', 'url', 'web', 't', 's', 'n', '其他', 'tag1', NOW, NOW, ''],
+  ];
+  const res2 = logic.renameCategoryInItems(rows, '食物', '美食', LATER);
+  assert.equal(res2.ok, true);
+  assert.equal(res2.changed, 1);
+  assert.equal(rows[0][6], '美食; 景點');
+  assert.equal(rows[0][9], LATER);
+  assert.equal(rows[1][6], '其他');
+});
+
+test('planDeleteCategory and deleteCategoryFromItems re-parent children and strip category from items', () => {
+  const categories = [
+    { name: '根分類', color: '#111', parent: '', createdAt: NOW },
+    { name: '中層', color: '#222', parent: '根分類', createdAt: NOW },
+    { name: '底層', color: '#333', parent: '中層', createdAt: NOW },
+    { name: '獨立', color: '#444', parent: '', createdAt: NOW },
+  ];
+  assert.equal(logic.planDeleteCategory(categories, '').error, 'bad_request');
+  assert.equal(logic.planDeleteCategory(categories, '不存在').error, 'not_found');
+
+  const planned = logic.planDeleteCategory(categories, '中層');
+  assert.equal(planned.ok, true);
+  assert.equal(planned.categories.length, 3);
+  assert.equal(planned.categories.find((c) => c.name === '底層').parent, '根分類');
+  assert.equal(planned.categories.find((c) => c.name === '獨立').parent, '');
+
+  const items = [
+    sampleItem({ id: '1', category: ['中層', '獨立'] }),
+    sampleItem({ id: '2', category: '中層' }),
+    sampleItem({ id: '3', category: ['獨立'] }),
+  ];
+  const res = logic.deleteCategoryFromItems(items, '中層', LATER);
+  assert.equal(res.ok, true);
+  assert.equal(res.changed, 2);
+  assert.deepEqual(items[0].category, ['獨立']);
+  assert.deepEqual(items[1].category, []);
+  assert.deepEqual(items[2].category, ['獨立']);
+
+  // Row arrays
+  const rows = [
+    ['1', 'url', 'web', 't', 's', 'n', '中層; 獨立', '', NOW, NOW, ''],
+  ];
+  logic.deleteCategoryFromItems(rows, '中層', LATER);
+  assert.equal(rows[0][6], '獨立');
+});
+
+test('renameTagInItems and deleteTagFromItems update and deduplicate tags', () => {
+  assert.equal(logic.renameTagInItems([], '', 'new').error, 'bad_request');
+  assert.equal(logic.renameTagInItems([], 'tag', 'tag').error, 'bad_request');
+  assert.equal(logic.deleteTagFromItems([], '').error, 'bad_request');
+
+  const items = [
+    sampleItem({ id: '1', tags: ['old', 'news'] }),
+    sampleItem({ id: '2', tags: ['news'] }),
+    sampleItem({ id: '3', tags: ['old'] }),
+  ];
+  // Rename 'old' to 'news' -> item 1 has ['news', 'news'] which should deduplicate to ['news']
+  const renRes = logic.renameTagInItems(items, 'old', 'news', LATER);
+  assert.equal(renRes.ok, true);
+  assert.equal(renRes.changed, 2);
+  assert.deepEqual(items[0].tags, ['news']);
+  assert.deepEqual(items[1].tags, ['news']);
+  assert.deepEqual(items[2].tags, ['news']);
+
+  // Delete 'news'
+  const delRes = logic.deleteTagFromItems(items, 'news', LATER);
+  assert.equal(delRes.ok, true);
+  assert.equal(delRes.changed, 3);
+  assert.deepEqual(items[0].tags, []);
+
+  // Row arrays
+  const rows = [
+    ['1', 'url', 'web', 't', 's', 'n', '', 'tech, ai', NOW, NOW, ''],
+  ];
+  logic.renameTagInItems(rows, 'tech', 'technology', LATER);
+  assert.equal(rows[0][7], 'technology, ai');
+  logic.deleteTagFromItems(rows, 'ai', LATER);
+  assert.equal(rows[0][7], 'technology');
+});
+
 test('the key is read from script properties and is not hard-coded', () => {
   const files = ['Code.gs', 'logic.js', 'appsscript.json', 'logic.test.js', 'fetch-samples.js'];
   const combined = files.map((name) => fs.readFileSync(path.join(__dirname, name), 'utf8')).join('\n');
