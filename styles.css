@@ -85,7 +85,7 @@ h1 {
 }
 
 h1.brand { display: flex; align-items: center; gap: 0.5rem; }
-h1.brand img { width: 1.9rem; height: 1.9rem; border-radius: 0.45rem; flex: none; }
+h1.brand img { width: 2.75rem; height: 2.75rem; border-radius: 0.6rem; flex: none; }
 
 h2 { font-size: 1.25rem; margin-bottom: 0.75rem; }
 
