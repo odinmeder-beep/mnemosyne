@@ -84,6 +84,9 @@ h1 {
   line-height: 1.2;
 }
 
+h1.brand { display: flex; align-items: center; gap: 0.5rem; }
+h1.brand img { width: 1.9rem; height: 1.9rem; border-radius: 0.45rem; flex: none; }
+
 h2 { font-size: 1.25rem; margin-bottom: 0.75rem; }
 
 .sub, .hint { color: var(--muted); font-size: 0.9rem; }
