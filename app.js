@@ -1002,7 +1002,23 @@ function showForm(id) {
   var token = ++renderToken;
   setView('form');
   clearBanner();
-  clearFormMessage();
+  clearItemForm();
+  var filled = false;
+  function fillFor(found) {
+    fillItemForm(found);
+    formHeading.textContent = '編輯書籤';
+    saveBtn.textContent = '儲存';
+    formDelete.hidden = false;
+    editingId = id;
+    filled = true;
+  }
+  if (id) {
+    formHeading.textContent = '編輯書籤';
+    formDelete.hidden = true;
+    for (var j = 0; j < items.length; j++) {
+      if (items[j].id === id) fillFor(items[j]);
+    }
+  }
   var load = refreshCategories().catch(function () { return categories; }).then(function () {
     return itemsLoaded ? items : refreshItems().catch(function () { return items; });
   });
@@ -1027,11 +1043,7 @@ function showForm(id) {
       location.hash = '#/';
       return;
     }
-    fillItemForm(item);
-    formHeading.textContent = '編輯書籤';
-    saveBtn.textContent = '儲存';
-    formDelete.hidden = false;
-    editingId = id;
+    if (!filled) fillFor(item);
   });
 }
 
@@ -1146,7 +1158,15 @@ function onSaveItem(event) {
       note: fields.note,
       category: fields.category,
       tags: fields.tags,
-    }).then(function () {
+    }).then(function (result) {
+      var saved = result && result.item;
+      for (var i = 0; i < items.length; i++) {
+        if (saved && items[i].id === saved.id) {
+          saved._search = '';
+          searchText(saved);
+          items[i] = saved;
+        }
+      }
       location.hash = '#/';
     }).catch(function (err) {
       showFormMessage(errorMessage(err), false);
