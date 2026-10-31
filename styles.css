@@ -70,7 +70,7 @@ button { cursor: pointer; }
 
 header {
   display: flex;
-  align-items: flex-end;
+  align-items: center;
   justify-content: space-between;
   gap: 0.75rem;
   margin-bottom: 1rem;
@@ -728,4 +728,25 @@ button.swatch.is-on {
   color: var(--muted);
   font-size: 0.9rem;
   text-align: center;
+}
+
+/* 標題列：圓形圖示按鈕 */
+header > div:first-child { min-width: 0; }
+.header-actions { flex-wrap: nowrap; align-items: center; flex: none; }
+button.icon-btn {
+  width: 44px; height: 44px; min-height: 44px; padding: 0;
+  display: inline-grid; place-items: center;
+  background: var(--card); color: var(--ink, inherit);
+  border: 1px solid var(--line);
+}
+button.icon-btn.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+button.icon-btn svg {
+  width: 22px; height: 22px; fill: none; stroke: currentColor;
+  stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;
+}
+button.icon-btn[hidden] { display: none; }
+@media (max-width: 380px) {
+  h1 { font-size: 1.35rem; }
+  h1.brand img { width: 2.4rem; height: 2.4rem; }
+  button.icon-btn { width: 40px; height: 40px; min-height: 40px; }
 }
