@@ -1,4 +1,4 @@
-var CACHE = 'mnemosyne-shell-v22';
+var CACHE = 'mnemosyne-shell-v23';
 var SHELL = [
   './index.html',
   './styles.css',

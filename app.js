@@ -24,8 +24,33 @@ var dateFormat = new Intl.DateTimeFormat('zh-Hant-TW', {
   hourCycle: 'h23',
 });
 
+var ITEMS_CACHE_KEY = 'mnemosyne.itemsCache';
 var items = [];
 var itemsLoaded = false;
+
+function saveItemsCache() {
+  try {
+    var plain = items.map(function (item) {
+      var copy = {};
+      Object.keys(item).forEach(function (key) {
+        if (key !== '_search') copy[key] = item[key];
+      });
+      return copy;
+    });
+    localStorage.setItem(ITEMS_CACHE_KEY, JSON.stringify(plain));
+  } catch (err) {
+    localStorage.removeItem(ITEMS_CACHE_KEY);
+  }
+}
+
+function loadItemsCache() {
+  try {
+    var saved = JSON.parse(localStorage.getItem(ITEMS_CACHE_KEY) || 'null');
+    return Array.isArray(saved) ? saved : null;
+  } catch (err) {
+    return null;
+  }
+}
 var categories = [];
 var editingId = null;
 var useFormMeta = false;
@@ -347,6 +372,7 @@ function clearFormMessage() {
 function refreshCategories() {
   return callApi('listCategories').then(function (data) {
     categories = Array.isArray(data.categories) ? data.categories : [];
+    try { localStorage.setItem('mnemosyne.categoriesCache', JSON.stringify(categories)); } catch (err) {}
     return categories;
   });
 }
@@ -843,6 +869,7 @@ function refreshItems() {
       return item;
     });
     itemsLoaded = true;
+    saveItemsCache();
     return items;
   });
 }
@@ -1542,6 +1569,8 @@ settingsForm.addEventListener('submit', function (event) {
 clearSettingsBtn.addEventListener('click', function () {
   localStorage.removeItem('mnemosyne.execUrl');
   localStorage.removeItem(STORAGE_KEY);
+  localStorage.removeItem(ITEMS_CACHE_KEY);
+  localStorage.removeItem('mnemosyne.categoriesCache');
   items = [];
   itemsLoaded = false;
   secretKeyInput.value = '';
@@ -1607,6 +1636,23 @@ window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', fun
 syncThemeControls();
 
 window.addEventListener('hashchange', renderRoute);
+
+// Show the last list this device saw right away; showList refreshes it from the sheet.
+if (hasSettings()) {
+  var cachedItems = loadItemsCache();
+  if (cachedItems) {
+    items = cachedItems.map(function (item) {
+      item._search = '';
+      searchText(item);
+      return item;
+    });
+    itemsLoaded = true;
+  }
+  try {
+    var cachedCategories = JSON.parse(localStorage.getItem('mnemosyne.categoriesCache') || 'null');
+    if (Array.isArray(cachedCategories)) categories = cachedCategories;
+  } catch (err) {}
+}
 
 function processPendingShareIfAny() {
   if (pendingShare()) {

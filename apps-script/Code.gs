@@ -61,9 +61,15 @@ function setup() {
   return 'ok';
 }
 
+var READ_ACTIONS_ = { list: true, listCategories: true, preview: true };
+var LIST_CACHE_KEY_ = 'list_v1';
+var LIST_CACHE_SECONDS_ = 300;
+var LIST_CACHE_CHUNK_ = 30000;
+
 function dispatch_(body) {
   var action = body.action;
   if (typeof action !== 'string' || !action) return { ok: false, error: 'bad_request' };
+  if (!READ_ACTIONS_[action]) clearListCache_();
   if (action === 'list') return handleList_();
   if (action === 'add') return handleAdd_(body);
   if (action === 'update') return handleUpdate_(body);
@@ -77,9 +83,56 @@ function dispatch_(body) {
 }
 
 function handleList_() {
-  return withLock_(function () {
-    return { ok: true, items: Mnemosyne.sortNewestFirst(readAllItems_()) };
+  var cached = readListCache_();
+  if (cached) return { ok: true, items: cached };
+  var items = withLock_(function () {
+    return Mnemosyne.sortNewestFirst(readAllItems_());
   });
+  writeListCache_(items);
+  return { ok: true, items: items };
+}
+
+// The sheet read is the slow part of list, so keep the sorted list in the
+// script cache for a few minutes. Any write action clears it first.
+function readListCache_() {
+  try {
+    var cache = CacheService.getScriptCache();
+    var count = Number(cache.get(LIST_CACHE_KEY_ + '_n'));
+    if (!count) return null;
+    var keys = [];
+    for (var i = 0; i < count; i++) keys.push(LIST_CACHE_KEY_ + '_' + i);
+    var parts = cache.getAll(keys);
+    var text = '';
+    for (var j = 0; j < keys.length; j++) {
+      if (typeof parts[keys[j]] !== 'string') return null;
+      text += parts[keys[j]];
+    }
+    return JSON.parse(text);
+  } catch (err) {
+    return null;
+  }
+}
+
+function writeListCache_(items) {
+  try {
+    var text = JSON.stringify(items);
+    var values = {};
+    var count = 0;
+    for (var i = 0; i < text.length; i += LIST_CACHE_CHUNK_) {
+      values[LIST_CACHE_KEY_ + '_' + count] = text.slice(i, i + LIST_CACHE_CHUNK_);
+      count++;
+    }
+    values[LIST_CACHE_KEY_ + '_n'] = String(count);
+    CacheService.getScriptCache().putAll(values, LIST_CACHE_SECONDS_);
+  } catch (err) {
+    clearListCache_();
+  }
+}
+
+function clearListCache_() {
+  try {
+    CacheService.getScriptCache().remove(LIST_CACHE_KEY_ + '_n');
+  } catch (err) {}
 }
 
 function handlePreview_(body) {
