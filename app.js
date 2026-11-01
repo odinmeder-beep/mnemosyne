@@ -897,8 +897,13 @@ function renderResults() {
   }
 }
 
+var listRequestSeq = 0;
+
 function refreshItems() {
+  var seq = ++listRequestSeq;
   return callApi('list').then(function (data) {
+    // An older list request that finishes late must not overwrite a newer one.
+    if (seq !== listRequestSeq) return items;
     items = (Array.isArray(data.items) ? data.items : []).map(function (item) {
       item._search = '';
       searchText(item);

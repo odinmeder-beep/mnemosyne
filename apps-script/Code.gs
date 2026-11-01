@@ -69,7 +69,18 @@ var LIST_CACHE_CHUNK_ = 30000;
 function dispatch_(body) {
   var action = body.action;
   if (typeof action !== 'string' || !action) return { ok: false, error: 'bad_request' };
-  if (!READ_ACTIONS_[action]) clearListCache_();
+  if (READ_ACTIONS_[action]) return dispatchAction_(action, body);
+  // A write clears the list cache before and after it runs, so a list read
+  // that raced with the write cannot leave an old list cached.
+  clearListCache_();
+  try {
+    return dispatchAction_(action, body);
+  } finally {
+    clearListCache_();
+  }
+}
+
+function dispatchAction_(action, body) {
   if (action === 'list') return handleList_();
   if (action === 'add') return handleAdd_(body);
   if (action === 'update') return handleUpdate_(body);
@@ -90,9 +101,10 @@ function handleList_() {
   var cached = readListCache_();
   if (cached) return { ok: true, items: cached };
   var items = withLock_(function () {
-    return Mnemosyne.sortNewestFirst(readAllItems_());
+    var sorted = Mnemosyne.sortNewestFirst(readAllItems_());
+    writeListCache_(sorted);
+    return sorted;
   });
-  writeListCache_(items);
   return { ok: true, items: items };
 }
 
