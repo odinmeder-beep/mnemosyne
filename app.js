@@ -25,8 +25,13 @@ var dateFormat = new Intl.DateTimeFormat('zh-Hant-TW', {
 });
 
 var ITEMS_CACHE_KEY = 'mnemosyne.itemsCache';
+var PENDING_OPS_KEY = 'mnemosyne.pendingOps';
 var items = [];
 var itemsLoaded = false;
+var pendingOps = [];
+var isFlushing = false;
+var flushTimer = null;
+var pendingError = '';
 
 function saveItemsCache() {
   try {
@@ -50,6 +55,187 @@ function loadItemsCache() {
   } catch (err) {
     return null;
   }
+}
+
+function loadPendingOps() {
+  try {
+    var raw = localStorage.getItem(PENDING_OPS_KEY);
+    pendingOps = raw ? JSON.parse(raw) : [];
+    if (!Array.isArray(pendingOps)) pendingOps = [];
+  } catch (err) { pendingOps = []; }
+}
+
+function savePendingOps() {
+  try { localStorage.setItem(PENDING_OPS_KEY, JSON.stringify(pendingOps)); } catch (err) {}
+}
+
+function genLocalId() {
+  return 'local-' + Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
+}
+
+function detectPlatformFromUrl(url) {
+  try {
+    var host = new URL(url).hostname.replace(/^www\./, '');
+    if (/^(threads\.net|threads\.com)$/.test(host)) return 'threads';
+    if (/^(instagram\.com|instagr\.am)$/.test(host)) return 'instagram';
+    if (/^(facebook\.com|fb\.com|fb\.watch|fb\.me|m\.facebook\.com)$/.test(host)) return 'facebook';
+    if (/^(x\.com|twitter\.com|mobile\.twitter\.com)$/.test(host)) return 'x';
+  } catch (err) {}
+  return 'web';
+}
+
+function enqueuePendingOp(action, id, payload) {
+  var opId = genLocalId();
+  var i, j;
+  if (action === 'update') {
+    for (i = 0; i < pendingOps.length; i++) {
+      if (pendingOps[i].id === id && (pendingOps[i].action === 'add' || pendingOps[i].action === 'update')) {
+        Object.keys(payload).forEach(function (k) {
+          pendingOps[i].payload[k] = payload[k];
+        });
+        savePendingOps();
+        return;
+      }
+    }
+  }
+  if (action === 'delete') {
+    for (j = 0; j < pendingOps.length; j++) {
+      if (pendingOps[j].id === id && pendingOps[j].action === 'add') {
+        pendingOps.splice(j, 1);
+        pendingOps = pendingOps.filter(function (op) { return op.id !== id; });
+        savePendingOps();
+        return;
+      }
+    }
+    pendingOps = pendingOps.filter(function (op) { return !(op.id === id && op.action === 'update'); });
+  }
+  pendingOps.push({ opId: opId, action: action, id: id, payload: payload, createdAt: new Date().toISOString() });
+  savePendingOps();
+}
+
+function renderPendingBanner() {
+  if (!listStatus) return;
+  var n = pendingOps.length;
+  if (n > 0) {
+    listStatus.hidden = false;
+    listStatus.textContent = pendingError || ('有 ' + n + ' 筆變更等連上網路後自動送出');
+  } else {
+    listStatus.hidden = true;
+    listStatus.textContent = '';
+  }
+}
+
+function scheduleFlush() {
+  if (flushTimer) return;
+  if (!pendingOps.length || pendingError) return;
+  flushTimer = setTimeout(function () {
+    flushTimer = null;
+    flushPendingOps();
+    if (pendingOps.length) scheduleFlush();
+  }, 30000);
+}
+
+function replacePendingId(oldId, newId) {
+  items.forEach(function (item) { if (item.id === oldId) item.id = newId; });
+  pendingOps.forEach(function (op) { if (op.id === oldId) op.id = newId; });
+}
+
+function flushPendingOps() {
+  if (isFlushing || !pendingOps.length || !navigator.onLine) return Promise.resolve();
+  if (flushTimer) {
+    clearTimeout(flushTimer);
+    flushTimer = null;
+  }
+  isFlushing = true;
+  pendingError = '';
+  renderPendingBanner();
+  var changed = false;
+  function sendNext() {
+    if (!pendingOps.length) return Promise.resolve();
+    var op = pendingOps[0];
+    var extra = Object.assign({}, op.payload || {});
+    if (op.action !== 'add') extra.id = op.id;
+    return callApi(op.action, extra).then(function (result) {
+      if (op.action === 'add') {
+        if (result.duplicate) {
+          items = items.filter(function (item) { return item.id !== op.id; });
+        } else {
+          var saved = result.item || {};
+          if (saved.id) replacePendingId(op.id, saved.id);
+          items = items.filter(function (item) { return item.id !== op.id && (!saved.id || item.id !== saved.id); });
+          if (saved.id) items.unshift(saved);
+        }
+      }
+      pendingOps.shift();
+      changed = true;
+      savePendingOps();
+      saveItemsCache();
+      return sendNext();
+    }).catch(function (err) {
+      if ((op.action === 'update' || op.action === 'delete') && err && err.code === 'not_found') {
+        pendingOps.shift();
+        changed = true;
+        savePendingOps();
+        return sendNext();
+      }
+      if (err && (err.code === 'network' || err.code === 'busy')) return;
+      pendingError = errorMessage(err);
+      renderPendingBanner();
+    });
+  }
+  return sendNext().then(function () {
+    isFlushing = false;
+    savePendingOps();
+    if (!pendingOps.length) {
+      pendingError = '';
+      if (changed) return refreshItems().catch(function () {});
+    } else {
+      scheduleFlush();
+    }
+  }).then(function () {
+    renderPendingBanner();
+    if (itemsLoaded) renderResults();
+  }).catch(function () {
+    isFlushing = false;
+    scheduleFlush();
+  });
+}
+
+function applyPendingOpsToItems(serverItems) {
+  var result = serverItems.filter(function (item) {
+    return !pendingOps.some(function (op) { return op.action === 'delete' && op.id === item.id; });
+  });
+  result = result.map(function (item) {
+    var updateOp = null;
+    pendingOps.forEach(function (op) {
+      if (op.action === 'update' && op.id === item.id) updateOp = op;
+    });
+    if (updateOp) {
+      item = Object.assign({}, item, updateOp.payload);
+      item._pending = true;
+    }
+    return item;
+  });
+  var addOps = pendingOps.filter(function (op) { return op.action === 'add'; }).slice().reverse();
+  addOps.forEach(function (op) {
+    result = result.filter(function (item) { return item.id !== op.id; });
+    result.unshift({
+      id: op.id,
+      url: op.payload.url || '',
+      title: op.payload.title || op.payload.url || '',
+      summary: op.payload.summary || '',
+      note: op.payload.note || '',
+      category: op.payload.category || [],
+      tags: op.payload.tags || [],
+      platform: op.payload.platform || detectPlatformFromUrl(op.payload.url || ''),
+      createdAt: op.createdAt,
+      updatedAt: op.createdAt,
+      image: '',
+      _pending: true,
+      _search: '',
+    });
+  });
+  return result;
 }
 var categories = [];
 var editingId = null;
@@ -95,6 +281,7 @@ var tagSubmitBtn = document.getElementById('tag-submit');
 var editingCategory = null;
 var renamingTag = null;
 var confirmAction = null;
+var confirmRequiresNetwork = false;
 var listTools = document.getElementById('list-tools');
 var searchInput = document.getElementById('search');
 var sortSelect = document.getElementById('sort');
@@ -233,6 +420,11 @@ function errorMessage(err) {
   return '發生問題，請再試一次。';
 }
 
+function categoryTagErrorMessage(err) {
+  var message = errorMessage(err);
+  return err && err.code === 'network' ? message + '需要連上網路才能修改分類和標籤。' : message;
+}
+
 function callApi(action, extra) {
   var key = localStorage.getItem(STORAGE_KEY);
   var payload = { key: key, action: action };
@@ -349,6 +541,26 @@ function saveSharedNow() {
     showList();
     showShareNotice('已收藏 ' + (saved.title || saved.url || ''), saved, true);
   }).catch(function (err) {
+    if (err && err.code === 'network') {
+      var localId = genLocalId();
+      var platform = detectPlatformFromUrl(shared.url);
+      var addPayload = { url: shared.url, note: '', category: '', tags: [], platform: platform };
+      enqueuePendingOp('add', localId, addPayload);
+      var now = new Date().toISOString();
+      var tempItem = { id: localId, url: shared.url, title: shared.url, summary: '', note: '', category: [], tags: [], platform: platform, createdAt: now, updatedAt: now, image: '', _pending: true, _search: '' };
+      searchText(tempItem);
+      items.unshift(tempItem);
+      itemsLoaded = true;
+      saveItemsCache();
+      showList();
+      // Wait for the '#/' route change to finish so it does not clear this notice.
+      setTimeout(function () {
+        showShareNotice('已先存在手機，連上網路後會自動送出', null, true);
+        renderPendingBanner();
+      }, 50);
+      scheduleFlush();
+      return;
+    }
     showList();
     showBanner(err);
   });
@@ -379,6 +591,7 @@ function hideConfirm() {
   confirmBox.hidden = true;
   pendingDelete = null;
   confirmAction = null;
+  confirmRequiresNetwork = false;
   var hintEl = confirmBox.querySelector('.hint');
   if (hintEl) hintEl.textContent = '刪除後不會留在清單裡。';
 }
@@ -386,6 +599,7 @@ function hideConfirm() {
 function openConfirmAction(title, hint, action) {
   pendingDelete = null;
   confirmAction = action;
+  confirmRequiresNetwork = true;
   confirmText.textContent = title;
   var hintEl = confirmBox.querySelector('.hint');
   if (hintEl) hintEl.textContent = hint;
@@ -564,6 +778,12 @@ function renderCard(item) {
   if (item.createdAt) time.dateTime = item.createdAt;
   time.textContent = formatDate(item.createdAt);
   meta.append(badge, time);
+  if (item._pending) {
+    var pendingBadge = document.createElement('span');
+    pendingBadge.className = 'pending-badge';
+    pendingBadge.textContent = '待同步';
+    meta.append(pendingBadge);
+  }
 
   var title = document.createElement('a');
   title.className = 'title';
@@ -904,15 +1124,29 @@ function refreshItems() {
   return callApi('list').then(function (data) {
     // An older list request that finishes late must not overwrite a newer one.
     if (seq !== listRequestSeq) return items;
-    items = (Array.isArray(data.items) ? data.items : []).map(function (item) {
+    var serverItems = (Array.isArray(data.items) ? data.items : []).map(function (item) {
       item._search = '';
       searchText(item);
+      return item;
+    });
+    items = applyPendingOpsToItems(serverItems).map(function (item) {
+      if (!item._search) { item._search = ''; searchText(item); }
       return item;
     });
     itemsLoaded = true;
     saveItemsCache();
     return items;
   });
+}
+
+function applyLocalDelete(id) {
+  enqueuePendingOp('delete', id, {});
+  items = items.filter(function (item) { return item.id !== id; });
+  itemsLoaded = true;
+  saveItemsCache();
+  renderPendingBanner();
+  renderResults();
+  scheduleFlush();
 }
 
 function showList() {
@@ -930,6 +1164,7 @@ function showList() {
     setListLoading(false);
     renderFilterChips();
     renderResults();
+    renderPendingBanner();
   }
   Promise.all([
     refreshItems(),
@@ -939,11 +1174,15 @@ function showList() {
     setListLoading(false);
     renderFilterChips();
     renderResults();
+    renderPendingBanner();
   }).catch(function (err) {
     if (token !== renderToken) return;
     setListLoading(false);
-    console.error(err && (err.stack || err.message || err));
-    showBanner(err);
+    renderPendingBanner();
+    if (!(err && err.code === 'network' && itemsLoaded)) {
+      console.error(err && (err.stack || err.message || err));
+      showBanner(err);
+    }
   });
 }
 
@@ -1379,6 +1618,7 @@ function renderRoute() {
 
 function openConfirm(item) {
   confirmAction = null;
+  confirmRequiresNetwork = false;
   pendingDelete = item;
   confirmText.textContent = '要刪除「' + (item.title || '這則收藏') + '」嗎？';
   var hintEl = confirmBox.querySelector('.hint');
@@ -1445,10 +1685,35 @@ function onSaveItem(event) {
       }
       location.hash = '#/';
     }).catch(function (err) {
+      if (err && err.code === 'network') {
+        var updatePayload = {
+          url: fields.url,
+          title: fields.title,
+          summary: fields.summary,
+          note: fields.note,
+          category: fields.category,
+          tags: fields.tags,
+        };
+        enqueuePendingOp('update', editingId, updatePayload);
+        for (var k = 0; k < items.length; k++) {
+          if (items[k].id === editingId) {
+            items[k] = Object.assign({}, items[k], updatePayload, { _pending: true, _search: '' });
+            searchText(items[k]);
+            break;
+          }
+        }
+        saveItemsCache();
+        renderPendingBanner();
+        scheduleFlush();
+        location.hash = '#/';
+        return;
+      }
       showFormMessage(errorMessage(err), false);
     }).then(done);
     return;
   }
+  var onlineAddedItemId = null;
+  var onlineAddedItem = null;
   callApi('add', {
     url: fields.url,
     note: fields.note,
@@ -1459,6 +1724,8 @@ function onSaveItem(event) {
       showFormMessage('這個連結已經收藏過了，沒有再新增一筆。', true);
       return null;
     }
+    onlineAddedItemId = result.item && result.item.id ? result.item.id : null;
+    onlineAddedItem = result.item || null;
     if (useFormMeta && result.item && (result.item.title !== fields.title || result.item.summary !== fields.summary)) {
       return callApi('update', {
         id: result.item.id,
@@ -1470,6 +1737,51 @@ function onSaveItem(event) {
   }).then(function (result) {
     if (result) location.hash = '#/';
   }).catch(function (err) {
+    if (err && err.code === 'network') {
+      if (onlineAddedItemId) {
+        var onlineUpdatePayload = { title: fields.title, summary: fields.summary };
+        enqueuePendingOp('update', onlineAddedItemId, onlineUpdatePayload);
+        for (var existingIndex = 0; existingIndex < items.length; existingIndex++) {
+          if (items[existingIndex].id === onlineAddedItemId) {
+            items[existingIndex] = Object.assign({}, items[existingIndex], onlineUpdatePayload, { _pending: true, _search: '' });
+            searchText(items[existingIndex]);
+            break;
+          }
+        }
+        if (!items.some(function (item) { return item.id === onlineAddedItemId; }) && onlineAddedItem) {
+          items.unshift(Object.assign({}, onlineAddedItem, onlineUpdatePayload, { _pending: true, _search: '' }));
+          searchText(items[0]);
+          itemsLoaded = true;
+        }
+        saveItemsCache();
+        renderPendingBanner();
+        scheduleFlush();
+        location.hash = '#/';
+        return;
+      }
+      var localId = genLocalId();
+      var platform = fields.url ? detectPlatformFromUrl(fields.url) : 'web';
+      var addPayload = {
+        url: fields.url,
+        title: fields.title,
+        summary: fields.summary,
+        note: fields.note,
+        category: fields.category,
+        tags: fields.tags,
+        platform: platform,
+      };
+      enqueuePendingOp('add', localId, addPayload);
+      var now = new Date().toISOString();
+      var tempItem = Object.assign({ id: localId, createdAt: now, updatedAt: now, image: '', _pending: true, _search: '' }, addPayload);
+      searchText(tempItem);
+      items.unshift(tempItem);
+      itemsLoaded = true;
+      saveItemsCache();
+      renderPendingBanner();
+      scheduleFlush();
+      location.hash = '#/';
+      return;
+    }
     showFormMessage(errorMessage(err), false);
   }).then(done);
 }
@@ -1700,7 +2012,7 @@ categoryForm.addEventListener('submit', function (event) {
     }).catch(function (err) {
       categoryDialogMessage.hidden = false;
       categoryDialogMessage.className = 'banner';
-      categoryDialogMessage.textContent = errorMessage(err);
+      categoryDialogMessage.textContent = categoryTagErrorMessage(err);
     }).then(function () {
       button.disabled = false;
     });
@@ -1729,7 +2041,7 @@ categoryForm.addEventListener('submit', function (event) {
   }).catch(function (err) {
     categoryDialogMessage.hidden = false;
     categoryDialogMessage.className = 'banner';
-    categoryDialogMessage.textContent = errorMessage(err);
+    categoryDialogMessage.textContent = categoryTagErrorMessage(err);
   }).then(function () {
     button.disabled = false;
   });
@@ -1904,7 +2216,12 @@ confirmDeleteBtn.addEventListener('click', function () {
   if (confirmAction) {
     confirmDeleteBtn.disabled = true;
     confirmAction().catch(function (err) {
-      showBanner(err);
+      if (confirmRequiresNetwork && err && err.code === 'network') {
+        banner.hidden = false;
+        banner.className = 'banner';
+        bannerText.textContent = categoryTagErrorMessage(err);
+        bannerEdit.hidden = true;
+      } else showBanner(err);
     }).then(function () {
       confirmDeleteBtn.disabled = false;
       hideConfirm();
@@ -1920,6 +2237,13 @@ confirmDeleteBtn.addEventListener('click', function () {
     if (returnToList) location.hash = '#/';
     else showList();
   }).catch(function (err) {
+    if (err && err.code === 'network') {
+      hideConfirm();
+      applyLocalDelete(id);
+      if (returnToList) location.hash = '#/';
+      else showList();
+      return;
+    }
     hideConfirm();
     showBanner(err);
   }).then(function () {
@@ -2000,7 +2324,7 @@ if (tagForm) {
     }).catch(function (err) {
       tagDialogMessage.hidden = false;
       tagDialogMessage.className = 'banner';
-      tagDialogMessage.textContent = errorMessage(err);
+      tagDialogMessage.textContent = categoryTagErrorMessage(err);
     }).then(function () {
       tagSubmitBtn.disabled = false;
     });
@@ -2038,9 +2362,10 @@ window.addEventListener('hashchange', renderRoute);
 
 // Show the last list this device saw right away; showList refreshes it from the sheet.
 if (hasSettings()) {
+  loadPendingOps();
   var cachedItems = loadItemsCache();
   if (cachedItems) {
-    items = cachedItems.map(function (item) {
+    items = applyPendingOpsToItems(cachedItems).map(function (item) {
       item._search = '';
       searchText(item);
       return item;
@@ -2052,6 +2377,11 @@ if (hasSettings()) {
     if (Array.isArray(cachedCategories)) categories = cachedCategories;
   } catch (err) {}
 }
+
+window.addEventListener('online', function () { flushPendingOps(); });
+document.addEventListener('visibilitychange', function () {
+  if (document.visibilityState === 'visible') flushPendingOps();
+});
 
 function processPendingShareIfAny() {
   if (pendingShare()) {
@@ -2073,6 +2403,10 @@ if (!hasSettings()) {
   } else {
     renderRoute();
   }
+}
+if (hasSettings() && pendingOps.length) {
+  flushPendingOps();
+  scheduleFlush();
 }
 
 window.addEventListener('pageshow', function () {
