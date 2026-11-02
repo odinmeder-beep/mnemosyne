@@ -61,6 +61,7 @@
             <option value="oldest">最舊</option>
             <option value="title">標題</option>
           </select>
+          <button type="button" id="bulk-select-toggle" class="ghost">選取</button>
         </div>
         <p class="hint filter-label">平台</p>
         <div id="platform-filters" class="chips"></div>
@@ -78,6 +79,39 @@
       <div id="cards"></div>
       <button type="button" id="show-more" class="ghost show-more" hidden>顯示更多</button>
     </section>
+
+    <div id="bulk-toolbar" class="bulk-toolbar" hidden>
+      <p id="bulk-selected-count">已選 0 則</p>
+      <div class="bulk-toolbar-actions">
+        <button type="button" id="bulk-select-all" class="ghost">全選（0）</button>
+        <button type="button" id="bulk-category" class="ghost" disabled>分類</button>
+        <button type="button" id="bulk-tags" class="ghost" disabled>標籤</button>
+        <button type="button" id="bulk-delete" class="danger" disabled>刪除</button>
+        <button type="button" id="bulk-cancel" class="ghost">取消</button>
+      </div>
+    </div>
+
+    <div id="bulk-panel" class="modal" hidden>
+      <div class="bulk-panel-card" role="dialog" aria-modal="true" aria-labelledby="bulk-panel-title">
+        <div class="modal-head">
+          <h2 id="bulk-panel-title">批次修改</h2>
+          <button type="button" id="bulk-panel-close" class="ghost icon-close" aria-label="關閉">×</button>
+        </div>
+        <div id="bulk-category-content" class="bulk-panel-body" hidden>
+          <fieldset class="bulk-category-mode">
+            <label><input type="radio" name="bulk-category-mode" value="add" checked> 加進分類</label>
+            <label><input type="radio" name="bulk-category-mode" value="replace"> 換成這些分類</label>
+          </fieldset>
+          <div id="bulk-category-options" class="cat-list"></div>
+        </div>
+        <div id="bulk-tag-content" class="bulk-panel-body" hidden>
+          <label for="bulk-tag-input">要加入的標籤（用逗號分隔）</label>
+          <input id="bulk-tag-input" type="text" autocomplete="off" placeholder="例如：測試, AI">
+        </div>
+        <p id="bulk-panel-error" class="bulk-panel-error" role="status" hidden></p>
+        <div class="modal-foot"><button type="button" id="bulk-apply">套用</button></div>
+      </div>
+    </div>
 
     <div id="view-form" class="modal" hidden>
       <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="form-heading">

@@ -257,6 +257,13 @@ var categoryFilter = '';
 var tagFilter = '';
 var visibleLimit = PAGE_SIZE;
 var searchTimer = null;
+var selectionMode = false;
+var selectedIds = [];
+var selectionJustAddedId = null;
+var longPressTimer = null;
+var longPressStartX = 0;
+var longPressStartY = 0;
+var bulkRunning = false;
 
 var navBack = document.getElementById('nav-back');
 var navAdd = document.getElementById('nav-add');
@@ -303,6 +310,22 @@ var emptyAdd = document.getElementById('empty-add');
 var clearFiltersBtn = document.getElementById('clear-filters');
 var cards = document.getElementById('cards');
 var showMoreBtn = document.getElementById('show-more');
+var bulkSelectToggle = document.getElementById('bulk-select-toggle');
+var bulkToolbar = document.getElementById('bulk-toolbar');
+var bulkSelectedCount = document.getElementById('bulk-selected-count');
+var bulkSelectAll = document.getElementById('bulk-select-all');
+var bulkCategoryBtn = document.getElementById('bulk-category');
+var bulkTagsBtn = document.getElementById('bulk-tags');
+var bulkDeleteBtn = document.getElementById('bulk-delete');
+var bulkCancelBtn = document.getElementById('bulk-cancel');
+var bulkPanel = document.getElementById('bulk-panel');
+var bulkPanelTitle = document.getElementById('bulk-panel-title');
+var bulkCategoryContent = document.getElementById('bulk-category-content');
+var bulkCategoryOptions = document.getElementById('bulk-category-options');
+var bulkTagContent = document.getElementById('bulk-tag-content');
+var bulkTagInput = document.getElementById('bulk-tag-input');
+var bulkPanelError = document.getElementById('bulk-panel-error');
+var bulkApplyBtn = document.getElementById('bulk-apply');
 var formHeading = document.getElementById('form-heading');
 var itemForm = document.getElementById('item-form');
 var itemUrl = document.getElementById('item-url');
@@ -769,7 +792,44 @@ function renderThumb(item) {
 
 function renderCard(item) {
   var card = document.createElement('article');
-  card.className = 'card';
+  card.className = 'card' + (selectionMode ? ' is-selecting' : '') + (selectedIds.indexOf(item.id) !== -1 ? ' is-selected' : '');
+  if (selectionMode) {
+    var check = document.createElement('span');
+    check.className = 'selection-check';
+    check.setAttribute('aria-hidden', 'true');
+    check.textContent = selectedIds.indexOf(item.id) !== -1 ? '✓' : '';
+    card.appendChild(check);
+  }
+  card.addEventListener('click', function (event) {
+    if (!selectionMode) return;
+    event.preventDefault();
+    event.stopPropagation();
+    // Cards re-render shorter after a long-press, so the release click can land on another card.
+    if (selectionJustAddedId) {
+      selectionJustAddedId = null;
+      return;
+    }
+    toggleSelectedItem(item.id);
+  }, true);
+  card.addEventListener('pointerdown', function (event) {
+    if (selectionMode || (event.pointerType !== 'touch' && event.pointerType !== 'pen')) return;
+    longPressStartX = event.clientX;
+    longPressStartY = event.clientY;
+    clearTimeout(longPressTimer);
+    longPressTimer = setTimeout(function () {
+      selectionJustAddedId = item.id;
+      setTimeout(function () {
+        if (selectionJustAddedId === item.id) selectionJustAddedId = null;
+      }, 1000);
+      enterSelectionMode(item.id);
+    }, 550);
+  });
+  ['pointerup', 'pointercancel', 'pointerleave'].forEach(function (name) {
+    card.addEventListener(name, function () { clearTimeout(longPressTimer); });
+  });
+  card.addEventListener('pointermove', function (event) {
+    if (Math.abs(event.clientX - longPressStartX) > 12 || Math.abs(event.clientY - longPressStartY) > 12) clearTimeout(longPressTimer);
+  });
   var top = document.createElement('div');
   top.className = 'card-top';
   var main = document.createElement('div');
@@ -1089,6 +1149,7 @@ function setListLoading(on) {
 
 function renderResults() {
   var matched = filteredItems();
+  updateBulkToolbar(matched);
   var shown = Math.min(visibleLimit, matched.length);
   cards.replaceChildren();
   for (var i = 0; i < shown; i++) cards.appendChild(renderCard(matched[i]));
@@ -1122,6 +1183,184 @@ function renderResults() {
   } else {
     showMoreBtn.hidden = true;
   }
+}
+
+function updateBulkToolbar(matched) {
+  bulkToolbar.hidden = !selectionMode;
+  bulkSelectToggle.hidden = selectionMode;
+  if (!selectionMode) return;
+  var selectedMatched = 0;
+  (matched || filteredItems()).forEach(function (item) {
+    if (selectedIds.indexOf(item.id) !== -1) selectedMatched += 1;
+  });
+  bulkSelectedCount.textContent = bulkRunning ? ('處理中 ' + bulkProgress + ' / ' + bulkTotal + '…') : ('已選 ' + selectedIds.length + ' 則');
+  bulkSelectAll.textContent = (matched || filteredItems()).length > 0 && selectedMatched === (matched || filteredItems()).length
+    ? '取消全選（' + ((matched || filteredItems()).length) + '）'
+    : '全選（' + ((matched || filteredItems()).length) + '）';
+  [bulkSelectAll, bulkCategoryBtn, bulkTagsBtn, bulkDeleteBtn, bulkCancelBtn].forEach(function (button) {
+    button.disabled = bulkRunning || (button !== bulkSelectAll && button !== bulkCancelBtn && selectedIds.length === 0);
+  });
+}
+
+function enterSelectionMode(id) {
+  if (!selectionMode) {
+    selectionMode = true;
+    selectedIds = [];
+    document.body.classList.add('is-bulk-selecting');
+  }
+  if (id != null && selectedIds.indexOf(id) === -1) selectedIds.push(id);
+  renderResults();
+}
+
+function toggleSelectedItem(id) {
+  var index = selectedIds.indexOf(id);
+  if (index === -1) selectedIds.push(id);
+  else selectedIds.splice(index, 1);
+  renderResults();
+}
+
+function leaveSelectionMode() {
+  selectionMode = false;
+  selectedIds = [];
+  bulkRunning = false;
+  document.body.classList.remove('is-bulk-selecting');
+  renderResults();
+}
+
+var bulkProgress = 0;
+var bulkTotal = 0;
+
+function openBulkPanel(kind) {
+  bulkPanelTitle.textContent = kind === 'category' ? '批次分類' : '批次加標籤';
+  bulkCategoryContent.hidden = kind !== 'category';
+  bulkTagContent.hidden = kind !== 'tags';
+  bulkPanelError.hidden = true;
+  bulkPanelError.textContent = '';
+  if (kind === 'category') {
+    bulkCategoryOptions.replaceChildren();
+    orderedCategoryRows('').forEach(function (row) {
+      var label = document.createElement('label');
+      label.className = 'bulk-category-option';
+      var input = document.createElement('input');
+      input.type = 'checkbox';
+      input.value = row.name;
+      input.checked = false;
+      var name = document.createElement('span');
+      name.textContent = new Array(row.depth + 1).join('　') + row.name;
+      label.append(input, name);
+      bulkCategoryOptions.appendChild(label);
+    });
+    var addMode = document.querySelector('input[name="bulk-category-mode"][value="add"]');
+    if (addMode) addMode.checked = true;
+  } else {
+    bulkTagInput.value = '';
+  }
+  bulkApplyBtn.dataset.kind = kind;
+  bulkPanel.hidden = false;
+  if (kind === 'tags') bulkTagInput.focus();
+}
+
+function applyBatchUpdate(id, payload) {
+  var request = Object.assign({ id: id }, payload);
+  return callApi('update', request).then(function (result) {
+    for (var i = 0; i < items.length; i++) {
+      if (items[i].id !== id) continue;
+      items[i] = Object.assign({}, items[i], (result && result.item) || payload, { _search: '' });
+      searchText(items[i]);
+      break;
+    }
+    saveItemsCache();
+    return true;
+  }).catch(function (err) {
+    if (!err || err.code !== 'network') return false;
+    enqueuePendingOp('update', id, payload);
+    for (var i = 0; i < items.length; i++) {
+      if (items[i].id === id) {
+        items[i] = Object.assign({}, items[i], payload, { _pending: true, _search: '' });
+        searchText(items[i]);
+        break;
+      }
+    }
+    saveItemsCache();
+    renderPendingBanner();
+    scheduleFlush();
+    return true;
+  });
+}
+
+function applyBatchDelete(id) {
+  return callApi('delete', { id: id }).then(function () {
+    items = items.filter(function (item) { return item.id !== id; });
+    saveItemsCache();
+    renderResults();
+    return true;
+  }).catch(function (err) {
+    if (!err || err.code !== 'network') return false;
+    applyLocalDelete(id);
+    return true;
+  });
+}
+
+function runBulkAction(action, value) {
+  var ids = selectedIds.slice();
+  if (action === 'delete') hideConfirm();
+  bulkPanel.hidden = true;
+  bulkRunning = true;
+  bulkProgress = 0;
+  bulkTotal = ids.length;
+  bulkApplyBtn.disabled = true;
+  document.getElementById('bulk-panel-close').disabled = true;
+  var failures = 0;
+  updateBulkToolbar();
+  renderResults();
+  function step(index) {
+    if (index >= ids.length) return Promise.resolve();
+    var id = ids[index];
+    var item = items.filter(function (entry) { return entry.id === id; })[0];
+    var task = Promise.resolve(true);
+    if (item && action === 'category') {
+      var oldNames = categoryNames(item);
+      var newNames = value.mode === 'replace' ? value.names.slice() : oldNames.concat(value.names);
+      newNames = categoryNames({ category: newNames });
+      var newCategory = newNames.join('; ');
+      if (newCategory !== oldNames.join('; ')) task = applyBatchUpdate(id, { category: newCategory });
+    } else if (item && action === 'tags') {
+      var oldTags = tagsOf(item).map(function (tag) { return String(tag).trim(); }).filter(Boolean);
+      var newTags = oldTags.slice();
+      value.forEach(function (tag) { if (newTags.indexOf(tag) === -1) newTags.push(tag); });
+      if (newTags.join('\n') !== oldTags.join('\n')) task = applyBatchUpdate(id, { tags: newTags });
+    } else if (item && action === 'delete') {
+      task = applyBatchDelete(id);
+    }
+    return task.then(function (ok) {
+      if (!ok) failures += 1;
+      bulkProgress = index + 1;
+      updateBulkToolbar();
+      renderResults();
+      return step(index + 1);
+    }).catch(function () {
+      failures += 1;
+      bulkProgress = index + 1;
+      updateBulkToolbar();
+      renderResults();
+      return step(index + 1);
+    });
+  }
+  return step(0).then(function () {
+    bulkPanel.hidden = true;
+    bulkApplyBtn.disabled = false;
+    document.getElementById('bulk-panel-close').disabled = false;
+    leaveSelectionMode();
+    return refreshItems().catch(function () { return items; }).then(function () {
+      renderFilterChips();
+      renderResults();
+      renderPendingBanner();
+      banner.hidden = false;
+      banner.className = failures ? 'banner' : 'banner ok';
+      bannerText.textContent = '完成 ' + (ids.length - failures) + ' 則，' + failures + ' 則失敗';
+      bannerEdit.hidden = true;
+    });
+  });
 }
 
 var listRequestSeq = 0;
@@ -1616,6 +1855,7 @@ function renderRoute() {
     return;
   }
   var hash = location.hash || '#/';
+  if (hash !== '#/' && selectionMode) leaveSelectionMode();
   if (hash === '#/settings') showSettings();
   else if (hash === '#/manage') showManage();
   else if (hash === '#/add') showForm(null);
@@ -2090,6 +2330,48 @@ sortSelect.addEventListener('change', function () {
   visibleLimit = PAGE_SIZE;
   renderResults();
 });
+bulkSelectToggle.addEventListener('click', function () { enterSelectionMode(); });
+bulkCancelBtn.addEventListener('click', leaveSelectionMode);
+bulkSelectAll.addEventListener('click', function () {
+  var matched = filteredItems();
+  var allSelected = matched.length > 0 && matched.every(function (item) { return selectedIds.indexOf(item.id) !== -1; });
+  matched.forEach(function (item) {
+    var index = selectedIds.indexOf(item.id);
+    if (allSelected && index !== -1) selectedIds.splice(index, 1);
+    else if (!allSelected && index === -1) selectedIds.push(item.id);
+  });
+  renderResults();
+});
+bulkCategoryBtn.addEventListener('click', function () { openBulkPanel('category'); });
+bulkTagsBtn.addEventListener('click', function () { openBulkPanel('tags'); });
+bulkDeleteBtn.addEventListener('click', function () {
+  var count = selectedIds.length;
+  openConfirmAction('確定要刪除這 ' + count + ' 則收藏嗎？', '刪除後不會留在清單裡。', function () {
+    return runBulkAction('delete');
+  });
+});
+document.getElementById('bulk-panel-close').addEventListener('click', function () { bulkPanel.hidden = true; });
+bulkPanel.addEventListener('click', function (event) {
+  if (event.target === bulkPanel) bulkPanel.hidden = true;
+});
+bulkApplyBtn.addEventListener('click', function () {
+  var kind = bulkApplyBtn.dataset.kind;
+  var value;
+  if (kind === 'category') {
+    value = {
+      mode: document.querySelector('input[name="bulk-category-mode"]:checked').value,
+      names: Array.prototype.map.call(bulkCategoryOptions.querySelectorAll('input:checked'), function (input) { return input.value; }),
+    };
+  } else {
+    value = parseTags(bulkTagInput.value);
+    if (!value.length) {
+      bulkPanelError.hidden = false;
+      bulkPanelError.textContent = '請輸入至少一個標籤。';
+      return;
+    }
+  }
+  runBulkAction(kind, value);
+});
 function onFilterChip(event, current, assign) {
   var button = event.target.closest('button');
   if (!button) return;
@@ -2143,6 +2425,10 @@ viewForm.addEventListener('click', function (event) {
 });
 document.addEventListener('keydown', function (event) {
   if (event.key !== 'Escape') return;
+  if (!bulkPanel.hidden) {
+    bulkPanel.hidden = true;
+    return;
+  }
   if (!confirmBox.hidden) {
     hideConfirm();
     return;
