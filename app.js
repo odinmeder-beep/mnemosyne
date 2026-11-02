@@ -167,6 +167,13 @@ function flushPendingOps() {
         }
       }
       pendingOps.shift();
+      // Like onSaveItem: the backend add ignores title/summary, so send them as an update.
+      var p = op.payload || {};
+      var savedItem = result.item || {};
+      if (op.action === 'add' && !result.duplicate && savedItem.id && (p.title || p.summary) &&
+          ((p.title || '') !== (savedItem.title || '') || (p.summary || '') !== (savedItem.summary || ''))) {
+        pendingOps.unshift({ opId: genLocalId(), action: 'update', id: savedItem.id, payload: { title: p.title || '', summary: p.summary || '' }, createdAt: new Date().toISOString() });
+      }
       changed = true;
       savePendingOps();
       saveItemsCache();
