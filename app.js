@@ -127,7 +127,7 @@ function renderPendingBanner() {
 
 function scheduleFlush() {
   if (flushTimer) return;
-  if (!pendingOps.length || pendingError) return;
+  if (!pendingOps.length) return;
   flushTimer = setTimeout(function () {
     flushTimer = null;
     flushPendingOps();
@@ -140,8 +140,11 @@ function replacePendingId(oldId, newId) {
   pendingOps.forEach(function (op) { if (op.id === oldId) op.id = newId; });
 }
 
+var flushAgain = false;
+
 function flushPendingOps() {
-  if (isFlushing || !pendingOps.length || !navigator.onLine) return Promise.resolve();
+  if (isFlushing) { flushAgain = true; return Promise.resolve(); }
+  if (!pendingOps.length || !navigator.onLine) return Promise.resolve();
   if (flushTimer) {
     clearTimeout(flushTimer);
     flushTimer = null;
@@ -156,9 +159,13 @@ function flushPendingOps() {
     var extra = Object.assign({}, op.payload || {});
     if (op.action !== 'add') extra.id = op.id;
     return callApi(op.action, extra).then(function (result) {
+      var cancelled = pendingOps.indexOf(op) === -1;
       if (op.action === 'add') {
+        // A list request started before this add must not drop the new card.
+        listRequestSeq++;
         if (result.duplicate) {
           items = items.filter(function (item) { return item.id !== op.id; });
+          showShareNotice('這個連結已經收藏過了', null, true);
         } else {
           var saved = result.item || {};
           if (saved.id) replacePendingId(op.id, saved.id);
@@ -166,7 +173,13 @@ function flushPendingOps() {
           if (saved.id) items.unshift(saved);
         }
       }
-      pendingOps.shift();
+      pendingOps = pendingOps.filter(function (entry) { return entry !== op; });
+      // Deleted on the phone while the add was on its way: delete it on the sheet too.
+      if (cancelled && op.action === 'add' && !result.duplicate && result.item && result.item.id) {
+        items = items.filter(function (item) { return item.id !== result.item.id; });
+        pendingOps.unshift({ opId: genLocalId(), action: 'delete', id: result.item.id, payload: {}, createdAt: new Date().toISOString() });
+        result = { duplicate: true };
+      }
       // Like onSaveItem: the backend add ignores title/summary, so send them as an update.
       var p = op.payload || {};
       var savedItem = result.item || {};
@@ -193,6 +206,11 @@ function flushPendingOps() {
   return sendNext().then(function () {
     isFlushing = false;
     savePendingOps();
+    if (flushAgain && pendingOps.length && !pendingError) {
+      flushAgain = false;
+      return flushPendingOps();
+    }
+    flushAgain = false;
     if (!pendingOps.length) {
       pendingError = '';
       if (changed) return refreshItems().catch(function () {});
@@ -206,6 +224,26 @@ function flushPendingOps() {
     isFlushing = false;
     scheduleFlush();
   });
+}
+
+function findSavedByUrl(url) {
+  return items.filter(function (item) { return item.url === url && !String(item.id).startsWith('local-'); })[0];
+}
+
+// Save a new item on the phone first, show it right away, then send it in the background.
+function queueLocalAdd(addPayload) {
+  var localId = genLocalId();
+  enqueuePendingOp('add', localId, addPayload);
+  var now = new Date().toISOString();
+  var tempItem = Object.assign({ id: localId, title: addPayload.url, summary: '', note: '', category: [], tags: [], createdAt: now, updatedAt: now, image: '', _pending: true, _search: '' }, addPayload);
+  if (!tempItem.title) tempItem.title = addPayload.url;
+  searchText(tempItem);
+  items.unshift(tempItem);
+  itemsLoaded = true;
+  saveItemsCache();
+  renderPendingBanner();
+  setTimeout(function () { flushPendingOps(); scheduleFlush(); }, 0);
+  return tempItem;
 }
 
 function applyPendingOpsToItems(serverItems) {
@@ -550,50 +588,17 @@ function saveSharedNow() {
     showShareNotice('這次分享裡沒有找到連結。', null, false);
     return;
   }
-  showShareNotice('正在儲存收藏...', null, true);
-  callApi('add', {
-    url: shared.url,
-    note: '',
-    category: '',
-    tags: [],
-    keepalive: true,
-  }).then(function (result) {
-    if (result.duplicate) {
-      showList();
-      showShareNotice('這個連結已經收藏過了', null, true);
-      return;
-    }
-    var saved = result.item || { url: shared.url };
-    if (saved.id) {
-      items = [saved].concat(items.filter(function (entry) { return entry.id !== saved.id; }));
-      itemsLoaded = true;
-    }
-    showList();
-    showShareNotice('已收藏 ' + (saved.title || saved.url || ''), saved, true);
-  }).catch(function (err) {
-    if (err && err.code === 'network') {
-      var localId = genLocalId();
-      var platform = detectPlatformFromUrl(shared.url);
-      var addPayload = { url: shared.url, note: '', category: '', tags: [], platform: platform };
-      enqueuePendingOp('add', localId, addPayload);
-      var now = new Date().toISOString();
-      var tempItem = { id: localId, url: shared.url, title: shared.url, summary: '', note: '', category: [], tags: [], platform: platform, createdAt: now, updatedAt: now, image: '', _pending: true, _search: '' };
-      searchText(tempItem);
-      items.unshift(tempItem);
-      itemsLoaded = true;
-      saveItemsCache();
-      showList();
-      // Wait for the '#/' route change to finish so it does not clear this notice.
-      setTimeout(function () {
-        showShareNotice('已先存在手機，連上網路後會自動送出', null, true);
-        renderPendingBanner();
-      }, 50);
-      scheduleFlush();
-      return;
-    }
-    showList();
-    showBanner(err);
-  });
+  if (findSavedByUrl(shared.url)) {
+    showShareNotice('這個連結已經收藏過了', null, true);
+    return;
+  }
+  queueLocalAdd({ url: shared.url, note: '', category: '', tags: [], platform: detectPlatformFromUrl(shared.url) });
+  showList();
+  // Wait for the '#/' route change to finish so it does not clear this notice.
+  setTimeout(function () {
+    showShareNotice('已存 ' + shared.url, null, true);
+    renderPendingBanner();
+  }, 50);
 }
 
 function setHeader() {
@@ -1262,7 +1267,8 @@ function openBulkPanel(kind) {
 
 function applyBatchUpdate(id, payload) {
   var request = Object.assign({ id: id }, payload);
-  return callApi('update', request).then(function (result) {
+  var sent = String(id).startsWith('local-') ? Promise.reject({ code: 'network' }) : callApi('update', request);
+  return sent.then(function (result) {
     for (var i = 0; i < items.length; i++) {
       if (items[i].id !== id) continue;
       items[i] = Object.assign({}, items[i], (result && result.item) || payload, { _search: '' });
@@ -1289,7 +1295,8 @@ function applyBatchUpdate(id, payload) {
 }
 
 function applyBatchDelete(id) {
-  return callApi('delete', { id: id }).then(function () {
+  var request = String(id).startsWith('local-') ? Promise.reject({ code: 'network' }) : callApi('delete', { id: id });
+  return request.then(function () {
     items = items.filter(function (item) { return item.id !== id; });
     saveItemsCache();
     renderResults();
@@ -1912,6 +1919,22 @@ function onSaveItem(event) {
   var done = function () {
     saveBtn.disabled = false;
   };
+  if (editingId && String(editingId).startsWith('local-')) {
+    var localFields = { url: fields.url, title: fields.title, summary: fields.summary, note: fields.note, category: fields.category, tags: fields.tags };
+    if (pendingOps.some(function (op) { return op.id === editingId; })) {
+      enqueuePendingOp('update', editingId, localFields);
+      items = items.map(function (item) {
+        if (item.id !== editingId) return item;
+        var next = Object.assign({}, item, localFields, { _pending: true, _search: '' });
+        searchText(next);
+        return next;
+      });
+      saveItemsCache();
+    }
+    done();
+    location.hash = '#/';
+    return;
+  }
   if (editingId) {
     callApi('update', {
       id: editingId,
@@ -1959,78 +1982,22 @@ function onSaveItem(event) {
     }).then(done);
     return;
   }
-  var onlineAddedItemId = null;
-  var onlineAddedItem = null;
-  callApi('add', {
+  if (findSavedByUrl(fields.url)) {
+    showFormMessage('這個連結已經收藏過了，沒有再新增一筆。', true);
+    done();
+    return;
+  }
+  queueLocalAdd({
     url: fields.url,
+    title: fields.title,
+    summary: fields.summary,
     note: fields.note,
     category: fields.category,
     tags: fields.tags,
-  }).then(function (result) {
-    if (result.duplicate) {
-      showFormMessage('這個連結已經收藏過了，沒有再新增一筆。', true);
-      return null;
-    }
-    onlineAddedItemId = result.item && result.item.id ? result.item.id : null;
-    onlineAddedItem = result.item || null;
-    if (useFormMeta && result.item && (result.item.title !== fields.title || result.item.summary !== fields.summary)) {
-      return callApi('update', {
-        id: result.item.id,
-        title: fields.title,
-        summary: fields.summary,
-      });
-    }
-    return result;
-  }).then(function (result) {
-    if (result) location.hash = '#/';
-  }).catch(function (err) {
-    if (err && err.code === 'network') {
-      if (onlineAddedItemId) {
-        var onlineUpdatePayload = { title: fields.title, summary: fields.summary };
-        enqueuePendingOp('update', onlineAddedItemId, onlineUpdatePayload);
-        for (var existingIndex = 0; existingIndex < items.length; existingIndex++) {
-          if (items[existingIndex].id === onlineAddedItemId) {
-            items[existingIndex] = Object.assign({}, items[existingIndex], onlineUpdatePayload, { _pending: true, _search: '' });
-            searchText(items[existingIndex]);
-            break;
-          }
-        }
-        if (!items.some(function (item) { return item.id === onlineAddedItemId; }) && onlineAddedItem) {
-          items.unshift(Object.assign({}, onlineAddedItem, onlineUpdatePayload, { _pending: true, _search: '' }));
-          searchText(items[0]);
-          itemsLoaded = true;
-        }
-        saveItemsCache();
-        renderPendingBanner();
-        scheduleFlush();
-        location.hash = '#/';
-        return;
-      }
-      var localId = genLocalId();
-      var platform = fields.url ? detectPlatformFromUrl(fields.url) : 'web';
-      var addPayload = {
-        url: fields.url,
-        title: fields.title,
-        summary: fields.summary,
-        note: fields.note,
-        category: fields.category,
-        tags: fields.tags,
-        platform: platform,
-      };
-      enqueuePendingOp('add', localId, addPayload);
-      var now = new Date().toISOString();
-      var tempItem = Object.assign({ id: localId, createdAt: now, updatedAt: now, image: '', _pending: true, _search: '' }, addPayload);
-      searchText(tempItem);
-      items.unshift(tempItem);
-      itemsLoaded = true;
-      saveItemsCache();
-      renderPendingBanner();
-      scheduleFlush();
-      location.hash = '#/';
-      return;
-    }
-    showFormMessage(errorMessage(err), false);
-  }).then(done);
+    platform: fields.url ? detectPlatformFromUrl(fields.url) : 'web',
+  });
+  done();
+  location.hash = '#/';
 }
 
 function openList() {
@@ -2525,7 +2492,9 @@ confirmDeleteBtn.addEventListener('click', function () {
   var id = pendingDelete.id;
   var returnToList = location.hash.indexOf('#/edit/') === 0;
   confirmDeleteBtn.disabled = true;
-  callApi('delete', { id: id }).then(function () {
+  // Not on the sheet yet: drop it from the queue (or delete it right after it lands).
+  var request = String(id).startsWith('local-') ? Promise.reject({ code: 'network' }) : callApi('delete', { id: id });
+  request.then(function () {
     hideConfirm();
     if (returnToList) location.hash = '#/';
     else showList();
