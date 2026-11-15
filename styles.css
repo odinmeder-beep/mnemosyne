@@ -898,3 +898,137 @@ button.icon-btn[hidden] { display: none; }
   background: #3a342f;
   color: #f6f1ea;
 }
+
+/* Desktop / web: compact floating select bar, keep phone two-row layout above */
+@media (min-width: 700px) {
+  .card.is-selecting { padding-left: 1rem; }
+  .card.is-selecting .selection-check {
+    left: 0.7rem;
+    top: 0.7rem;
+    width: 1.35rem;
+    height: 1.35rem;
+    border: 2px solid var(--line);
+    background: var(--card);
+    box-shadow: 0 0 0 2px var(--card);
+    font-size: 0.8rem;
+  }
+  .card.is-selected {
+    outline: 2px solid var(--accent);
+    outline-offset: 0;
+    box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 22%, transparent);
+    background: color-mix(in srgb, var(--accent) 7%, var(--card));
+  }
+  .card.is-selected .selection-check {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: var(--accent-ink);
+    box-shadow: 0 0 0 2px var(--card);
+  }
+
+  .bulk-toolbar {
+    left: 50%;
+    right: auto;
+    bottom: 1.35rem;
+    width: min(42rem, calc(100% - 2.5rem));
+    transform: translateX(-50%);
+    display: flex;
+    align-items: center;
+    gap: 0.85rem;
+    padding: 0.7rem 0.85rem 0.7rem 1.1rem;
+    border: 1px solid var(--line);
+    border-radius: 22px;
+    background: var(--card);
+    box-shadow: 0 8px 28px rgba(40, 30, 20, 0.12), 0 1px 2px rgba(40, 30, 20, 0.06);
+  }
+  .bulk-toolbar p {
+    margin: 0;
+    color: var(--ink);
+    font-size: 0.92rem;
+    font-weight: 650;
+    white-space: nowrap;
+    flex: 0 0 auto;
+  }
+  .bulk-toolbar-actions {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: flex-end;
+    flex: 1;
+    gap: 0.4rem;
+    min-width: 0;
+  }
+  .bulk-toolbar-nav,
+  .bulk-toolbar-do { display: contents; }
+  .bulk-toolbar-nav button,
+  .bulk-toolbar-do button {
+    flex: 0 0 auto;
+    width: auto;
+    min-width: 0;
+    min-height: 38px;
+    padding: 0.35rem 0.8rem 0.35rem 0.7rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.35rem;
+    white-space: nowrap;
+    font-size: 0.9rem;
+  }
+  #bulk-select-all { order: 1; }
+  #bulk-category { order: 2; }
+  #bulk-tags { order: 3; }
+  #bulk-delete { order: 4; }
+  #bulk-cancel { order: 5; }
+
+  .bulk-toolbar button::before {
+    content: "";
+    width: 15px;
+    height: 15px;
+    flex: none;
+    background: currentColor;
+    -webkit-mask: center / contain no-repeat;
+    mask: center / contain no-repeat;
+  }
+  #bulk-select-all::before {
+    -webkit-mask-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><rect x='3' y='3' width='18' height='18' rx='3'/><path d='M8 12l3 3 5-6'/></svg>");
+    mask-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><rect x='3' y='3' width='18' height='18' rx='3'/><path d='M8 12l3 3 5-6'/></svg>");
+  }
+  #bulk-cancel::before {
+    -webkit-mask-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M6 6l12 12M18 6L6 18'/></svg>");
+    mask-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M6 6l12 12M18 6L6 18'/></svg>");
+  }
+  #bulk-category::before {
+    -webkit-mask-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M3 12V4a1 1 0 0 1 1-1h8l9 9-9 9-9-9z'/><circle cx='7.5' cy='7.5' r='1.5'/></svg>");
+    mask-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M3 12V4a1 1 0 0 1 1-1h8l9 9-9 9-9-9z'/><circle cx='7.5' cy='7.5' r='1.5'/></svg>");
+  }
+  #bulk-tags::before {
+    -webkit-mask-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M20 10.5V7a1 1 0 0 0-1-1h-6.5L4 14.5 9.5 20 20 10.5z'/><circle cx='15' cy='8' r='1'/></svg>");
+    mask-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M20 10.5V7a1 1 0 0 0-1-1h-6.5L4 14.5 9.5 20 20 10.5z'/><circle cx='15' cy='8' r='1'/></svg>");
+  }
+  #bulk-delete::before {
+    -webkit-mask-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M4 7h16M10 11v6M14 11v6M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2'/></svg>");
+    mask-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M4 7h16M10 11v6M14 11v6M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2'/></svg>");
+  }
+
+  #bulk-panel .bulk-panel-card {
+    width: min(28rem, calc(100% - 2.5rem));
+    border: 1px solid var(--line);
+    border-radius: 20px;
+  }
+  #bulk-category-options.cat-list {
+    border: 0;
+    background: transparent;
+    max-height: 16rem;
+    padding: 0;
+  }
+  .bulk-category-option {
+    border-bottom: 0;
+    border-radius: 10px;
+    padding: 0.45rem 0.65rem;
+  }
+  .bulk-category-option:hover { background: var(--note); }
+  body.is-bulk-selecting { padding-bottom: 6.5rem; }
+}
+
+:root[data-theme="dark"] .bulk-toolbar {
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.45), 0 1px 2px rgba(0, 0, 0, 0.35);
+}
