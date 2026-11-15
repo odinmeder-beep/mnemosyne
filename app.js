@@ -235,8 +235,7 @@ function queueLocalAdd(addPayload) {
   var localId = genLocalId();
   enqueuePendingOp('add', localId, addPayload);
   var now = new Date().toISOString();
-  var tempItem = Object.assign({ id: localId, title: addPayload.url, summary: '', note: '', category: [], tags: [], createdAt: now, updatedAt: now, image: '', _pending: true, _search: '' }, addPayload);
-  if (!tempItem.title) tempItem.title = addPayload.url;
+  var tempItem = Object.assign({ id: localId, title: '', summary: '', note: '', category: [], tags: [], createdAt: now, updatedAt: now, image: '', _pending: true, _search: '' }, addPayload);
   searchText(tempItem);
   items.unshift(tempItem);
   itemsLoaded = true;
@@ -295,6 +294,8 @@ var categoryFilter = '';
 var tagFilter = '';
 var visibleLimit = PAGE_SIZE;
 var searchTimer = null;
+var filtersOpen = false;
+var pendingRevealId = null;
 var selectionMode = false;
 var selectedIds = [];
 var selectionJustAddedId = null;
@@ -348,6 +349,8 @@ var emptyAdd = document.getElementById('empty-add');
 var clearFiltersBtn = document.getElementById('clear-filters');
 var cards = document.getElementById('cards');
 var showMoreBtn = document.getElementById('show-more');
+var filterToggle = document.getElementById('filter-toggle');
+var filterPanel = document.getElementById('filter-panel');
 var bulkSelectToggle = document.getElementById('bulk-select-toggle');
 var bulkToolbar = document.getElementById('bulk-toolbar');
 var bulkSelectedCount = document.getElementById('bulk-selected-count');
@@ -475,7 +478,7 @@ function errorMessage(err) {
   var messages = {
     unauthorized: '金鑰不正確。請到設定確認金鑰。',
     invalid_url: '請貼上以 http 或 https 開頭的網址。',
-    not_found: '找不到這則收藏，可能已經刪除。',
+    not_found: '找不到這則珍藏，可能已經刪除。',
     duplicate: '已經有同名的分類。',
     not_setup: '試算表還沒建立。請在 Apps Script 執行 setup。',
     busy: '暫時忙碌，請再試一次。',
@@ -537,11 +540,37 @@ function callApi(action, extra) {
   });
 }
 
+function taipeiDay(date) {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Taipei',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(date);
+}
+
+function hostFromUrl(url) {
+  try {
+    return new URL(url).hostname.replace(/^www\./, '');
+  } catch (err) {
+    return '';
+  }
+}
+
 function formatDate(iso) {
   if (!iso) return '';
   var date = new Date(iso);
   if (Number.isNaN(date.getTime())) return '';
-  return dateFormat.format(date);
+  var day = taipeiDay(date);
+  var today = taipeiDay(new Date());
+  if (day === today) return '今天';
+  var parts = today.split('-').map(Number);
+  var prev = new Date(Date.UTC(parts[0], parts[1] - 1, parts[2]) - 86400000);
+  var yesterday = prev.getUTCFullYear() + '-' + String(prev.getUTCMonth() + 1).padStart(2, '0') + '-' + String(prev.getUTCDate()).padStart(2, '0');
+  if (day === yesterday) return '昨天';
+  var bits = day.split('-');
+  if (bits[0] === today.slice(0, 4)) return String(Number(bits[1])) + '/' + String(Number(bits[2]));
+  return bits[0] + '/' + String(Number(bits[1])) + '/' + String(Number(bits[2]));
 }
 
 function parseTags(value) {
@@ -592,13 +621,21 @@ function saveSharedNow() {
     showShareNotice('這個連結已經收藏過了', null, true);
     return;
   }
-  queueLocalAdd({ url: shared.url, note: '', category: '', tags: [], platform: detectPlatformFromUrl(shared.url) });
+  var saved = queueLocalAdd({ url: shared.url, note: '', category: '', tags: [], platform: detectPlatformFromUrl(shared.url) });
   showList();
   // Wait for the '#/' route change to finish so it does not clear this notice.
   setTimeout(function () {
-    showShareNotice('已存 ' + shared.url, null, true);
+    showShareNotice('已存 ' + shareLabel(saved), saved, true);
     renderPendingBanner();
+    revealNewItem(saved.id);
   }, 50);
+}
+
+function shareLabel(item) {
+  if (!item) return '珍藏';
+  var title = String(item.title || '').trim();
+  if (title && title !== item.url) return title.length > 24 ? title.slice(0, 24) + '…' : title;
+  return hostFromUrl(item.url) || '珍藏';
 }
 
 function setHeader() {
@@ -724,29 +761,21 @@ function renderCategoryPicker() {
     chosenBox.hidden = true;
   }
   var query = search ? search.value : '';
+  list.className = 'chips';
   list.replaceChildren();
   orderedCategoryRows(query).forEach(function (row) {
-    var line = document.createElement('label');
-    line.className = 'cat-row' + (chosen.indexOf(row.name) !== -1 ? ' is-on' : '');
-    line.style.paddingLeft = (0.75 + row.depth * 1.15) + 'rem';
-    var box = document.createElement('input');
-    box.type = 'checkbox';
-    box.checked = chosen.indexOf(row.name) !== -1;
-    box.addEventListener('change', function () {
+    var on = chosen.indexOf(row.name) !== -1;
+    var chip = makeChip(row.name, null, on, row.name, row.color || '#90a4ae');
+    if (row.depth) chip.className += ' chip-child';
+    chip.addEventListener('click', function () {
       var next = categoryNames({ category: itemCategory.value });
       var index = next.indexOf(row.name);
-      if (box.checked && index === -1) next.push(row.name);
-      if (!box.checked && index !== -1) next.splice(index, 1);
+      if (index === -1) next.push(row.name);
+      else next.splice(index, 1);
       writeCategoryField(next);
       renderCategoryPicker();
     });
-    var dot = document.createElement('span');
-    dot.className = 'dot';
-    dot.style.background = row.color || '#90a4ae';
-    var label = document.createElement('span');
-    label.textContent = row.name;
-    line.append(box, dot, label);
-    list.appendChild(line);
+    list.appendChild(chip);
   });
 }
 
@@ -771,13 +800,19 @@ function renderThumb(item) {
   var icon = faviconUrl(item.url);
   function showIcon() {
     box.replaceChildren();
-    if (!icon) return;
+    if (!icon) {
+      box.classList.add('thumb-empty');
+      return;
+    }
     var fallback = document.createElement('img');
     fallback.className = 'thumb-icon';
     fallback.alt = '';
     fallback.referrerPolicy = 'no-referrer';
     fallback.src = icon;
-    fallback.addEventListener('error', function () { box.replaceChildren(); });
+    fallback.addEventListener('error', function () {
+      box.replaceChildren();
+      box.classList.add('thumb-empty');
+    });
     box.appendChild(fallback);
   }
   if (photo) {
@@ -798,6 +833,7 @@ function renderThumb(item) {
 function renderCard(item) {
   var card = document.createElement('article');
   card.className = 'card' + (selectionMode ? ' is-selecting' : '') + (selectedIds.indexOf(item.id) !== -1 ? ' is-selected' : '');
+  card.setAttribute('data-id', item.id);
   if (selectionMode) {
     var check = document.createElement('span');
     check.className = 'selection-check';
@@ -862,8 +898,19 @@ function renderCard(item) {
   title.href = item.url || '#';
   title.target = '_blank';
   title.rel = 'noopener noreferrer';
-  title.textContent = item.title || item.url || '沒有標題';
+  var itemTitleText = String(item.title || '').trim();
+  if (itemTitleText && itemTitleText !== item.url) {
+    title.textContent = itemTitleText;
+  } else {
+    title.textContent = hostFromUrl(item.url) || '沒有標題';
+  }
   main.append(meta, title);
+  if (!itemTitleText || itemTitleText === item.url) {
+    var missing = document.createElement('p');
+    missing.className = 'title-missing';
+    missing.textContent = '沒有標題';
+    main.append(missing);
+  }
 
   if (item.summary) {
     var summary = document.createElement('p');
@@ -922,14 +969,7 @@ function renderCard(item) {
   edit.addEventListener('click', function () {
     location.hash = '#/edit/' + encodeURIComponent(item.id);
   });
-  var remove = document.createElement('button');
-  remove.type = 'button';
-  remove.className = 'ghost';
-  remove.textContent = '刪除';
-  remove.addEventListener('click', function () {
-    openConfirm(item);
-  });
-  actions.append(edit, remove);
+  actions.append(edit);
   main.append(actions);
   top.append(renderThumb(item), main);
   card.append(top);
@@ -1094,11 +1134,47 @@ function makeChip(label, count, pressed, value, color) {
   return button;
 }
 
+function syncFilterPanel() {
+  if (filterPanel) filterPanel.hidden = !filtersOpen;
+  if (filterToggle) {
+    filterToggle.setAttribute('aria-expanded', filtersOpen ? 'true' : 'false');
+    filterToggle.classList.toggle('is-on', filtersOpen);
+    var n = (platformFilter ? 1 : 0) + (categoryFilter ? 1 : 0) + (tagFilter ? 1 : 0);
+    filterToggle.textContent = n ? ('篩選 ' + n) : '篩選';
+  }
+}
+
+function renderActiveFilters() {
+  if (!activeFilters) return;
+  activeFilters.replaceChildren();
+  function addClearChip(label, clear) {
+    var button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'chip is-on';
+    button.textContent = label + ' ×';
+    button.addEventListener('click', function () {
+      clear();
+      visibleLimit = PAGE_SIZE;
+      renderFilterChips();
+      renderResults();
+    });
+    activeFilters.appendChild(button);
+  }
+  if (platformFilter) addClearChip(PLATFORM_LABEL[platformFilter] || platformFilter, function () { platformFilter = ''; });
+  if (categoryFilter) addClearChip(categoryFilter === '__none__' ? '未分類' : categoryFilter, function () { categoryFilter = ''; });
+  if (tagFilter) addClearChip('標籤：' + tagFilter, function () { tagFilter = ''; });
+  activeFilters.hidden = !(platformFilter || categoryFilter || tagFilter);
+  syncFilterPanel();
+}
+
 function renderFilterChips() {
   platformFilters.replaceChildren();
   platformFilters.appendChild(makeChip('全部', null, platformFilter === '', ''));
   PLATFORMS.forEach(function (platform) {
-    platformFilters.appendChild(makeChip(PLATFORM_LABEL[platform], null, platformFilter === platform, platform));
+    var count = 0;
+    items.forEach(function (item) { if (item.platform === platform) count += 1; });
+    if (count === 0 && platformFilter !== platform) return;
+    platformFilters.appendChild(makeChip(PLATFORM_LABEL[platform], count, platformFilter === platform, platform));
   });
 
   var names = [];
@@ -1129,22 +1205,7 @@ function renderFilterChips() {
 }
 
 function renderActiveTag() {
-  activeFilters.replaceChildren();
-  if (!tagFilter) {
-    activeFilters.hidden = true;
-    return;
-  }
-  activeFilters.hidden = false;
-  var button = document.createElement('button');
-  button.type = 'button';
-  button.className = 'chip is-on';
-  button.textContent = '標籤：' + tagFilter + ' ×';
-  button.addEventListener('click', function () {
-    tagFilter = '';
-    visibleLimit = PAGE_SIZE;
-    renderResults();
-  });
-  activeFilters.appendChild(button);
+  renderActiveFilters();
 }
 
 function setListLoading(on) {
@@ -1152,12 +1213,35 @@ function setListLoading(on) {
   listStatus.hidden = !on;
 }
 
+function revealNewItem(id) {
+  pendingRevealId = id;
+  filtersOpen = false;
+  syncFilterPanel();
+  scrollToItem(id);
+}
+
+function scrollToItem(id) {
+  if (!id || !cards) return;
+  var card = cards.querySelector('.card[data-id="' + String(id).replace(/"/g, '') + '"]');
+  if (!card) return;
+  var sticky = document.querySelector('.search-sticky');
+  var offset = sticky ? sticky.getBoundingClientRect().height + 8 : 8;
+  var top = card.getBoundingClientRect().top + window.scrollY - offset;
+  window.scrollTo({ top: Math.max(0, top), behavior: 'smooth' });
+  pendingRevealId = null;
+}
+
 function renderResults() {
   var matched = filteredItems();
   updateBulkToolbar(matched);
+  renderActiveFilters();
   var shown = Math.min(visibleLimit, matched.length);
   cards.replaceChildren();
   for (var i = 0; i < shown; i++) cards.appendChild(renderCard(matched[i]));
+  if (pendingRevealId) {
+    var revealId = pendingRevealId;
+    setTimeout(function () { scrollToItem(revealId); }, 50);
+  }
   renderActiveTag();
 
   var filtering = filtersActive();
@@ -1165,7 +1249,7 @@ function renderResults() {
     listTools.hidden = true;
     resultCount.textContent = '';
     empty.hidden = false;
-    emptyText.textContent = '還沒有收藏。';
+    emptyText.textContent = '還沒有珍藏。';
     emptyAdd.hidden = false;
     clearFiltersBtn.hidden = true;
     showMoreBtn.hidden = true;
@@ -1176,7 +1260,7 @@ function renderResults() {
   resultCount.textContent = filtering ? (matched.length + ' / ' + items.length + ' 則') : (items.length + ' 則');
   if (!matched.length) {
     empty.hidden = false;
-    emptyText.textContent = '沒有符合的收藏。';
+    emptyText.textContent = '沒有符合的珍藏。';
     emptyAdd.hidden = true;
     clearFiltersBtn.hidden = false;
   } else {
@@ -1566,14 +1650,14 @@ function showForm(id) {
   var filled = false;
   function fillFor(found) {
     fillItemForm(found);
-    formHeading.textContent = '編輯書籤';
+    formHeading.textContent = '編輯珍藏';
     saveBtn.textContent = '儲存';
     formDelete.hidden = false;
     editingId = id;
     filled = true;
   }
   if (id) {
-    formHeading.textContent = '編輯書籤';
+    formHeading.textContent = '編輯珍藏';
     formDelete.hidden = true;
     for (var j = 0; j < items.length; j++) {
       if (items[j].id === id) fillFor(items[j]);
@@ -1587,7 +1671,7 @@ function showForm(id) {
     renderCategoryPicker();
     if (!id) {
       clearItemForm();
-      formHeading.textContent = '新增書籤';
+      formHeading.textContent = '新增珍藏';
       saveBtn.textContent = '儲存';
       formDelete.hidden = true;
       editingId = null;
@@ -1679,7 +1763,7 @@ function renderManageCategoryList() {
     var count = categoryUsageCount(row.name);
     var countEl = document.createElement('span');
     countEl.className = 'manage-count';
-    countEl.textContent = count + ' 筆收藏';
+    countEl.textContent = count + ' 筆珍藏';
 
     infoEl.append(dotEl, nameEl, countEl);
 
@@ -1709,7 +1793,7 @@ function renderManageCategoryList() {
       var currentCount = categoryUsageCount(row.name);
       openConfirmAction(
         '要刪除分類「' + row.name + '」嗎？',
-        '會從 ' + currentCount + ' 筆收藏移除這個分類，收藏本身不會刪掉。',
+        '會從 ' + currentCount + ' 筆珍藏移除這個分類，珍藏本身不會刪掉。',
         function () {
           return callApi('deleteCategory', { name: row.name }).then(function () {
             return Promise.all([refreshItems(), refreshCategories()]);
@@ -1757,7 +1841,7 @@ function renderManageTagList() {
     var count = tagUsageCount(tag);
     var countEl = document.createElement('span');
     countEl.className = 'manage-count';
-    countEl.textContent = count + ' 筆收藏';
+    countEl.textContent = count + ' 筆珍藏';
 
     infoEl.append(nameEl, countEl);
 
@@ -1780,7 +1864,7 @@ function renderManageTagList() {
       var currentCount = tagUsageCount(tag);
       openConfirmAction(
         '要刪除標籤「' + tag + '」嗎？',
-        '會從 ' + currentCount + ' 筆收藏移除這個標籤。',
+        '會從 ' + currentCount + ' 筆珍藏移除這個標籤。',
         function () {
           return callApi('deleteTag', { name: tag }).then(function () {
             var idx = extraTags.indexOf(tag);
@@ -1874,7 +1958,7 @@ function openConfirm(item) {
   confirmAction = null;
   confirmRequiresNetwork = false;
   pendingDelete = item;
-  confirmText.textContent = '要刪除「' + (item.title || '這則收藏') + '」嗎？';
+  confirmText.textContent = '要刪除「' + (item.title || '這則珍藏') + '」嗎？';
   var hintEl = confirmBox.querySelector('.hint');
   if (hintEl) hintEl.textContent = '刪除後不會留在清單裡。';
   confirmBox.hidden = false;
@@ -1987,7 +2071,7 @@ function onSaveItem(event) {
     done();
     return;
   }
-  queueLocalAdd({
+  var added = queueLocalAdd({
     url: fields.url,
     title: fields.title,
     summary: fields.summary,
@@ -1998,6 +2082,7 @@ function onSaveItem(event) {
   });
   done();
   location.hash = '#/';
+  setTimeout(function () { revealNewItem(added.id); }, 50);
 }
 
 function openList() {
@@ -2079,7 +2164,7 @@ function showExportMessage(text) {
 
 function exportItems(kind) {
   if (!itemsLoaded) {
-    showExportMessage('請先回到清單讀取收藏，再匯出。');
+    showExportMessage('請先回到清單讀取珍藏，再匯出。');
     return;
   }
   var date = exportDate();
@@ -2146,7 +2231,7 @@ function openCategoryDialog(cat) {
   newCatParent.replaceChildren();
   var none = document.createElement('option');
   none.value = '';
-  none.textContent = '未分類';
+  none.textContent = '沒有（最上層）';
   newCatParent.appendChild(none);
 
   var excluded = {};
@@ -2297,6 +2382,12 @@ sortSelect.addEventListener('change', function () {
   visibleLimit = PAGE_SIZE;
   renderResults();
 });
+if (filterToggle) {
+  filterToggle.addEventListener('click', function () {
+    filtersOpen = !filtersOpen;
+    syncFilterPanel();
+  });
+}
 bulkSelectToggle.addEventListener('click', function () { enterSelectionMode(); });
 bulkCancelBtn.addEventListener('click', leaveSelectionMode);
 bulkSelectAll.addEventListener('click', function () {
@@ -2313,7 +2404,7 @@ bulkCategoryBtn.addEventListener('click', function () { openBulkPanel('category'
 bulkTagsBtn.addEventListener('click', function () { openBulkPanel('tags'); });
 bulkDeleteBtn.addEventListener('click', function () {
   var count = selectedIds.length;
-  openConfirmAction('確定要刪除這 ' + count + ' 則收藏嗎？', '刪除後不會留在清單裡。', function () {
+  openConfirmAction('確定要刪除這 ' + count + ' 則珍藏嗎？', '刪除後不會留在清單裡。', function () {
     return runBulkAction('delete');
   });
 });
