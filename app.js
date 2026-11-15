@@ -1662,6 +1662,11 @@ function showForm(id) {
     for (var j = 0; j < items.length; j++) {
       if (items[j].id === id) fillFor(items[j]);
     }
+  } else {
+    formHeading.textContent = '新增珍藏';
+    saveBtn.textContent = '儲存';
+    formDelete.hidden = true;
+    editingId = null;
   }
   var load = refreshCategories().catch(function () { return categories; }).then(function () {
     return itemsLoaded ? items : refreshItems().catch(function () { return items; });
