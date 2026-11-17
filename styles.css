@@ -49,6 +49,7 @@ html, body { margin: 0; }
 
 body {
   min-height: 100vh;
+  min-height: 100dvh;
   background: var(--bg);
   color: var(--ink);
   font-family: "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", "WenQuanYi Micro Hei", sans-serif;
@@ -294,6 +295,12 @@ button.chip.is-on, button.tag.is-on {
 
 .card.is-selecting { cursor: pointer; padding-left: 3.25rem; }
 .card.is-selected { outline: 2px solid var(--accent); outline-offset: 1px; }
+.card.is-selecting:focus { outline: none; }
+.card.is-selecting:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 35%, transparent);
+}
 .selection-check {
   position: absolute;
   left: 0.9rem;
@@ -331,6 +338,7 @@ button.chip.is-on, button.tag.is-on {
 .bulk-panel-card {
   width: min(34rem, 100%);
   max-height: min(85vh, 42rem);
+  max-height: min(85dvh, 42rem);
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -558,6 +566,7 @@ button.swatch.is-on {
 
 #category-dialog .confirm-card {
   max-height: min(90vh, 40rem);
+  max-height: min(90dvh, 40rem);
   overflow: auto;
 }
 
@@ -585,7 +594,6 @@ button.swatch.is-on {
   position: fixed;
   inset: 0;
   z-index: 40;
-  display: flex;
   align-items: flex-end;
   justify-content: center;
   padding: 1rem;
@@ -609,16 +617,51 @@ button.swatch.is-on {
   position: fixed;
   inset: 0;
   z-index: 30;
-  display: flex;
   align-items: center;
   justify-content: center;
   padding: 1.25rem;
   background: var(--overlay);
 }
 
+dialog.modal,
+dialog.confirm {
+  width: 100%;
+  max-width: none;
+  height: 100%;
+  max-height: none;
+  margin: 0;
+  border: 0;
+  color: inherit;
+}
+
+dialog.modal:not([open]),
+dialog.confirm:not([open]) {
+  display: none;
+}
+
+dialog.modal[open],
+dialog.confirm[open] {
+  display: flex;
+}
+
+dialog:modal {
+  overscroll-behavior: contain;
+}
+
+dialog::backdrop {
+  background: transparent;
+  overflow: hidden;
+  overscroll-behavior: contain;
+}
+
+body:has(dialog[open]) {
+  overflow: hidden;
+}
+
 .modal-card {
   width: min(40rem, 100%);
   max-height: min(92vh, 52rem);
+  max-height: min(92dvh, 52rem);
   display: flex;
   flex-direction: column;
   background: var(--card);
@@ -738,6 +781,7 @@ button.swatch.is-on {
   #bulk-panel .bulk-panel-card {
     width: 100%;
     max-height: 86vh;
+    max-height: 86dvh;
     margin-bottom: env(safe-area-inset-bottom);
     border-radius: 18px 18px 0 0;
   }

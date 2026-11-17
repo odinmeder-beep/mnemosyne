@@ -4,6 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#0f6e6b">
+  <meta name="color-scheme" content="light dark">
   <script>
     (function () {
       var choice = 'system';
@@ -15,6 +16,8 @@
       document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
       var meta = document.querySelector('meta[name="theme-color"]');
       if (meta) meta.setAttribute('content', dark ? '#141210' : '#0f6e6b');
+      var scheme = document.querySelector('meta[name="color-scheme"]');
+      if (scheme) scheme.setAttribute('content', choice === 'system' ? 'light dark' : (dark ? 'dark' : 'light'));
     })();
   </script>
   <meta name="description" content="Mnemosyne，個人連結收藏。">
@@ -54,7 +57,7 @@
     <section id="view-list" hidden>
       <div id="list-tools" hidden>
         <div class="search-sticky">
-          <input id="search" type="search" placeholder="搜尋標題、摘要、備註、分類或標籤" autocomplete="off" enterkeyhint="search">
+          <input id="search" type="search" placeholder="搜尋標題、摘要、備註、分類或標籤" autocomplete="off" enterkeyhint="search" aria-label="搜尋標題、摘要、備註、分類或標籤">
         </div>
         <div class="sort-row">
           <label for="sort">排序</label>
@@ -100,8 +103,8 @@
       </div>
     </div>
 
-    <div id="bulk-panel" class="modal" hidden>
-      <div class="bulk-panel-card" role="dialog" aria-modal="true" aria-labelledby="bulk-panel-title">
+    <dialog id="bulk-panel" class="modal" closedby="any" aria-labelledby="bulk-panel-title">
+      <div class="bulk-panel-card">
         <div class="modal-head">
           <h2 id="bulk-panel-title">批次修改</h2>
           <button type="button" id="bulk-panel-close" class="ghost icon-close" aria-label="關閉">×</button>
@@ -120,10 +123,10 @@
         <p id="bulk-panel-error" class="bulk-panel-error" role="status" hidden></p>
         <div class="modal-foot"><button type="button" id="bulk-apply">套用</button></div>
       </div>
-    </div>
+    </dialog>
 
-    <div id="view-form" class="modal" hidden>
-      <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="form-heading">
+    <dialog id="view-form" class="modal" closedby="any" aria-labelledby="form-heading">
+      <div class="modal-card">
         <div class="modal-head">
           <h2 id="form-heading">編輯珍藏</h2>
           <button type="button" id="form-close" class="ghost icon-close" aria-label="關閉">×</button>
@@ -186,7 +189,7 @@
           </div>
         </form>
       </div>
-    </div>
+    </dialog>
 
     <section id="view-settings" hidden>
       <h2>設定</h2>
@@ -243,8 +246,8 @@
     </section>
   </div>
 
-  <div id="confirm" class="confirm" hidden>
-    <div class="confirm-card" role="dialog" aria-modal="true" aria-labelledby="confirm-text">
+  <dialog id="confirm" class="confirm" closedby="any" aria-labelledby="confirm-text">
+    <div class="confirm-card">
       <p id="confirm-text">要刪除這則珍藏嗎？</p>
       <p class="hint">刪除後不會留在清單裡。</p>
       <div class="form-actions">
@@ -252,9 +255,9 @@
         <button type="button" id="confirm-cancel" class="ghost">取消</button>
       </div>
     </div>
-  </div>
+  </dialog>
 
-  <div id="category-dialog" class="confirm" hidden>
+  <dialog id="category-dialog" class="confirm" closedby="any" aria-labelledby="cat-dialog-title">
     <form id="category-form" class="confirm-card">
       <h2 id="cat-dialog-title">新增分類</h2>
       <label for="new-cat-name">分類名稱</label>
@@ -275,11 +278,11 @@
         <button type="submit" id="cat-create">建立</button>
       </div>
     </form>
-  </div>
+  </dialog>
 
-  <div id="tag-dialog" class="confirm" hidden>
+  <dialog id="tag-dialog" class="confirm" closedby="any" aria-labelledby="tag-dialog-title">
     <form id="tag-form" class="confirm-card">
-      <h2>修改標籤名稱</h2>
+      <h2 id="tag-dialog-title">修改標籤名稱</h2>
       <label for="edit-tag-name">標籤名稱</label>
       <input id="edit-tag-name" type="text" autocomplete="off" required>
       <p class="hint">若新名稱已存在，將會自動合併。</p>
@@ -289,7 +292,7 @@
         <button type="submit" id="tag-submit">儲存</button>
       </div>
     </form>
-  </div>
+  </dialog>
 
   <script src="./app.js"></script>
 </body>

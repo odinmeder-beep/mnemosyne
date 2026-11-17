@@ -260,7 +260,7 @@ function applyPendingOpsToItems(serverItems) {
     }
     return item;
   });
-  var addOps = pendingOps.filter(function (op) { return op.action === 'add'; }).slice().reverse();
+  var addOps = pendingOps.filter(function (op) { return op.action === 'add'; }).toReversed();
   addOps.forEach(function (op) {
     result = result.filter(function (item) { return item.id !== op.id; });
     result.unshift({
@@ -390,6 +390,56 @@ var confirmBox = document.getElementById('confirm');
 var confirmText = document.getElementById('confirm-text');
 var confirmDeleteBtn = document.getElementById('confirm-delete');
 var confirmCancelBtn = document.getElementById('confirm-cancel');
+
+function isComposingEnter(event) {
+  return event.isComposing === true || event.keyCode === 229;
+}
+
+var pendingDialogFocus = null;
+
+function rememberDialogFocus(target) {
+  pendingDialogFocus = target;
+}
+
+function restorePendingFocus() {
+  var target = pendingDialogFocus;
+  pendingDialogFocus = null;
+  if (!target) return;
+  setTimeout(function () {
+    var el = null;
+    if (target && target.itemId) {
+      var list = cards ? cards.querySelectorAll('.card') : [];
+      var card = null;
+      for (var i = 0; i < list.length; i++) {
+        if (list[i].getAttribute('data-id') === String(target.itemId)) card = list[i];
+      }
+      el = (card && card.querySelector('.card-actions button')) || card;
+    } else if (typeof target === 'string') {
+      el = document.querySelector(target);
+    } else {
+      el = target;
+    }
+    if (el && !el.hidden && typeof el.focus === 'function') el.focus();
+  }, 0);
+}
+
+function openDialog(el) {
+  if (!el) return;
+  if (typeof el.showModal === 'function') {
+    if (!el.open) el.showModal();
+  } else {
+    el.hidden = false;
+  }
+}
+
+function closeDialog(el) {
+  if (!el) return;
+  if (typeof el.close === 'function') {
+    if (el.open) el.close();
+  } else {
+    el.hidden = true;
+  }
+}
 
 function readSort() {
   var saved = localStorage.getItem(STORAGE_SORT);
@@ -599,6 +649,7 @@ function showShareNotice(text, item, ok) {
   if (item && item.id) {
     bannerEdit.hidden = false;
     bannerEdit.onclick = function () {
+      rememberDialogFocus('#banner-edit');
       location.hash = '#/edit/' + encodeURIComponent(item.id);
     };
   } else {
@@ -649,23 +700,29 @@ function setHeader() {
 function setView(name) {
   currentView = name;
   if (name !== 'form') viewList.hidden = name !== 'list';
-  viewForm.hidden = name !== 'form';
+  if (name === 'form') openDialog(viewForm);
+  else closeDialog(viewForm);
   viewSettings.hidden = name !== 'settings';
   if (viewManage) viewManage.hidden = name !== 'manage';
   setHeader();
+  if (name === 'list') restorePendingFocus();
 }
 
 function closeItemForm() {
   openList();
 }
 
-function hideConfirm() {
-  confirmBox.hidden = true;
+function resetConfirmState() {
   pendingDelete = null;
   confirmAction = null;
   confirmRequiresNetwork = false;
   var hintEl = confirmBox.querySelector('.hint');
   if (hintEl) hintEl.textContent = '刪除後不會留在清單裡。';
+}
+
+function hideConfirm() {
+  closeDialog(confirmBox);
+  resetConfirmState();
 }
 
 function openConfirmAction(title, hint, action) {
@@ -675,7 +732,7 @@ function openConfirmAction(title, hint, action) {
   confirmText.textContent = title;
   var hintEl = confirmBox.querySelector('.hint');
   if (hintEl) hintEl.textContent = hint;
-  confirmBox.hidden = false;
+  openDialog(confirmBox);
   confirmCancelBtn.focus();
 }
 
@@ -835,10 +892,14 @@ function renderCard(item) {
   card.className = 'card' + (selectionMode ? ' is-selecting' : '') + (selectedIds.indexOf(item.id) !== -1 ? ' is-selected' : '');
   card.setAttribute('data-id', item.id);
   if (selectionMode) {
+    var selected = selectedIds.indexOf(item.id) !== -1;
+    card.tabIndex = 0;
+    card.setAttribute('role', 'checkbox');
+    card.setAttribute('aria-checked', selected ? 'true' : 'false');
     var check = document.createElement('span');
     check.className = 'selection-check';
     check.setAttribute('aria-hidden', 'true');
-    check.textContent = selectedIds.indexOf(item.id) !== -1 ? '✓' : '';
+    check.textContent = selected ? '✓' : '';
     card.appendChild(check);
   }
   card.addEventListener('click', function (event) {
@@ -967,12 +1028,25 @@ function renderCard(item) {
   edit.className = 'ghost';
   edit.textContent = '編輯';
   edit.addEventListener('click', function () {
+    rememberDialogFocus({ itemId: item.id });
     location.hash = '#/edit/' + encodeURIComponent(item.id);
   });
   actions.append(edit);
   main.append(actions);
   top.append(renderThumb(item), main);
   card.append(top);
+  if (selectionMode) {
+    title.tabIndex = -1;
+    edit.tabIndex = -1;
+    var innerButtons = card.querySelectorAll('button, a');
+    for (var bi = 0; bi < innerButtons.length; bi++) innerButtons[bi].tabIndex = -1;
+    card.addEventListener('keydown', function (event) {
+      if (event.key !== ' ' && event.key !== 'Enter') return;
+      if (isComposingEnter(event)) return;
+      event.preventDefault();
+      toggleSelectedItem(item.id);
+    });
+  }
   return card;
 }
 
@@ -1306,6 +1380,14 @@ function toggleSelectedItem(id) {
   if (index === -1) selectedIds.push(id);
   else selectedIds.splice(index, 1);
   renderResults();
+  if (!selectionMode || !cards) return;
+  var list = cards.querySelectorAll('.card');
+  for (var i = 0; i < list.length; i++) {
+    if (list[i].getAttribute('data-id') === String(id)) {
+      list[i].focus();
+      break;
+    }
+  }
 }
 
 function leaveSelectionMode() {
@@ -1345,7 +1427,7 @@ function openBulkPanel(kind) {
     bulkTagInput.value = '';
   }
   bulkApplyBtn.dataset.kind = kind;
-  bulkPanel.hidden = false;
+  openDialog(bulkPanel);
   if (kind === 'tags') bulkTagInput.focus();
 }
 
@@ -1395,7 +1477,7 @@ function applyBatchDelete(id) {
 function runBulkAction(action, value) {
   var ids = selectedIds.slice();
   if (action === 'delete') hideConfirm();
-  bulkPanel.hidden = true;
+  closeDialog(bulkPanel);
   bulkRunning = true;
   bulkProgress = 0;
   bulkTotal = ids.length;
@@ -1438,7 +1520,7 @@ function runBulkAction(action, value) {
     });
   }
   return step(0).then(function () {
-    bulkPanel.hidden = true;
+    closeDialog(bulkPanel);
     bulkApplyBtn.disabled = false;
     document.getElementById('bulk-panel-close').disabled = false;
     leaveSelectionMode();
@@ -1896,7 +1978,7 @@ function openTagRenameDialog(tag) {
     tagDialogMessage.hidden = true;
     tagDialogMessage.textContent = '';
   }
-  if (tagDialog) tagDialog.hidden = false;
+  openDialog(tagDialog);
   if (editTagName) editTagName.focus();
 }
 
@@ -1936,6 +2018,8 @@ function applyTheme(choice) {
   document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
   var meta = document.querySelector('meta[name="theme-color"]');
   if (meta) meta.setAttribute('content', dark ? '#141210' : '#0f6e6b');
+  var scheme = document.querySelector('meta[name="color-scheme"]');
+  if (scheme) scheme.setAttribute('content', choice === 'system' ? 'light dark' : (dark ? 'dark' : 'light'));
 }
 
 function syncThemeControls() {
@@ -1966,7 +2050,7 @@ function openConfirm(item) {
   confirmText.textContent = '要刪除「' + (item.title || '這則珍藏') + '」嗎？';
   var hintEl = confirmBox.querySelector('.hint');
   if (hintEl) hintEl.textContent = '刪除後不會留在清單裡。';
-  confirmBox.hidden = false;
+  openDialog(confirmBox);
   confirmCancelBtn.focus();
 }
 
@@ -2259,19 +2343,20 @@ function openCategoryDialog(cat) {
   });
   newCatParent.value = cat && cat.parent ? cat.parent : '';
   renderSwatches();
-  categoryDialog.hidden = false;
+  openDialog(categoryDialog);
   newCatName.focus();
 }
 
 document.getElementById('new-category').addEventListener('click', function () { openCategoryDialog(null); });
 document.getElementById('category-search').addEventListener('input', renderCategoryPicker);
 document.getElementById('cat-cancel').addEventListener('click', function () {
-  categoryDialog.hidden = true;
+  closeDialog(categoryDialog);
   editingCategory = null;
 });
+categoryDialog.addEventListener('close', function () { editingCategory = null; });
 categoryDialog.addEventListener('click', function (event) {
   if (event.target === categoryDialog) {
-    categoryDialog.hidden = true;
+    closeDialog(categoryDialog);
     editingCategory = null;
   }
 });
@@ -2308,7 +2393,7 @@ categoryForm.addEventListener('submit', function (event) {
     }).then(function () {
       return Promise.all([refreshItems(), refreshCategories()]);
     }).then(function () {
-      categoryDialog.hidden = true;
+      closeDialog(categoryDialog);
       editingCategory = null;
       if (currentView === 'manage') renderManageView();
       renderCategoryPicker();
@@ -2335,7 +2420,7 @@ categoryForm.addEventListener('submit', function (event) {
       if (nextChosen.indexOf(createdName) === -1) nextChosen.push(createdName);
       writeCategoryField(nextChosen);
     }
-    categoryDialog.hidden = true;
+    closeDialog(categoryDialog);
     editingCategory = null;
     return Promise.all([refreshItems(), refreshCategories()]);
   }).then(function () {
@@ -2352,9 +2437,9 @@ categoryForm.addEventListener('submit', function (event) {
 });
 
 navBack.addEventListener('click', function () { openList(); });
-navAdd.addEventListener('click', function () { location.hash = '#/add'; });
+navAdd.addEventListener('click', function () { rememberDialogFocus('#nav-add'); location.hash = '#/add'; });
 navSettings.addEventListener('click', function () { location.hash = '#/settings'; });
-document.getElementById('empty-add').addEventListener('click', function () { location.hash = '#/add'; });
+document.getElementById('empty-add').addEventListener('click', function () { rememberDialogFocus('#empty-add'); location.hash = '#/add'; });
 clearFiltersBtn.addEventListener('click', function () {
   query = '';
   searchInput.value = '';
@@ -2413,9 +2498,9 @@ bulkDeleteBtn.addEventListener('click', function () {
     return runBulkAction('delete');
   });
 });
-document.getElementById('bulk-panel-close').addEventListener('click', function () { bulkPanel.hidden = true; });
+document.getElementById('bulk-panel-close').addEventListener('click', function () { closeDialog(bulkPanel); });
 bulkPanel.addEventListener('click', function (event) {
-  if (event.target === bulkPanel) bulkPanel.hidden = true;
+  if (event.target === bulkPanel) closeDialog(bulkPanel);
 });
 bulkApplyBtn.addEventListener('click', function () {
   var kind = bulkApplyBtn.dataset.kind;
@@ -2486,22 +2571,21 @@ document.getElementById('form-cancel').addEventListener('click', closeItemForm);
 viewForm.addEventListener('click', function (event) {
   if (event.target === viewForm) closeItemForm();
 });
-document.addEventListener('keydown', function (event) {
-  if (event.key !== 'Escape') return;
-  if (!bulkPanel.hidden) {
-    bulkPanel.hidden = true;
-    return;
-  }
-  if (!confirmBox.hidden) {
-    hideConfirm();
-    return;
-  }
-  if (categoryDialog && !categoryDialog.hidden) {
-    categoryDialog.hidden = true;
-    return;
-  }
-  if (!viewForm.hidden) closeItemForm();
+viewForm.addEventListener('close', function () {
+  if (currentView === 'form') openList();
 });
+confirmBox.addEventListener('close', resetConfirmState);
+if (tagDialog) {
+  tagDialog.addEventListener('close', function () { renamingTag = null; });
+}
+if (bulkPanel) {
+  bulkPanel.addEventListener('close', function () {
+    if (bulkPanelError) {
+      bulkPanelError.hidden = true;
+      bulkPanelError.textContent = '';
+    }
+  });
+}
 document.getElementById('tag-search').addEventListener('input', renderTagPicker);
 document.getElementById('new-tag').addEventListener('click', function () {
   var row = document.getElementById('new-tag-row');
@@ -2511,14 +2595,17 @@ document.getElementById('new-tag').addEventListener('click', function () {
 document.getElementById('new-tag-add').addEventListener('click', addExtraTag);
 document.getElementById('new-tag-name').addEventListener('keydown', function (event) {
   if (event.key !== 'Enter') return;
+  if (isComposingEnter(event)) return;
   event.preventDefault();
   addExtraTag();
 });
 document.getElementById('category-search').addEventListener('keydown', function (event) {
-  if (event.key === 'Enter') event.preventDefault();
+  if (event.key !== 'Enter' || isComposingEnter(event)) return;
+  event.preventDefault();
 });
 document.getElementById('tag-search').addEventListener('keydown', function (event) {
-  if (event.key === 'Enter') event.preventDefault();
+  if (event.key !== 'Enter' || isComposingEnter(event)) return;
+  event.preventDefault();
 });
 
 document.getElementById('export-csv').addEventListener('click', function () {
@@ -2630,10 +2717,9 @@ if (manageNewTagAddBtn) {
 }
 if (manageNewTagInput) {
   manageNewTagInput.addEventListener('keydown', function (event) {
-    if (event.key === 'Enter') {
-      event.preventDefault();
-      if (manageNewTagAddBtn) manageNewTagAddBtn.click();
-    }
+    if (event.key !== 'Enter' || isComposingEnter(event)) return;
+    event.preventDefault();
+    if (manageNewTagAddBtn) manageNewTagAddBtn.click();
   });
 }
 if (manageTagSearch) {
@@ -2641,14 +2727,14 @@ if (manageTagSearch) {
 }
 if (tagCancelBtn) {
   tagCancelBtn.addEventListener('click', function () {
-    if (tagDialog) tagDialog.hidden = true;
+    closeDialog(tagDialog);
     renamingTag = null;
   });
 }
 if (tagDialog) {
   tagDialog.addEventListener('click', function (event) {
     if (event.target === tagDialog) {
-      tagDialog.hidden = true;
+      closeDialog(tagDialog);
       renamingTag = null;
     }
   });
@@ -2665,7 +2751,7 @@ if (tagForm) {
       return;
     }
     if (newName === renamingTag) {
-      tagDialog.hidden = true;
+      closeDialog(tagDialog);
       renamingTag = null;
       return;
     }
@@ -2675,7 +2761,7 @@ if (tagForm) {
       if (idx !== -1) extraTags[idx] = newName;
       return Promise.all([refreshItems(), refreshCategories()]);
     }).then(function () {
-      tagDialog.hidden = true;
+      closeDialog(tagDialog);
       renamingTag = null;
       renderManageTagList();
       renderTagPicker();
