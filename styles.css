@@ -583,6 +583,12 @@ button.swatch.is-on {
 
 .card-actions { margin-top: 0.8rem; }
 
+.card-actions .card-delete {
+  background: transparent;
+  color: var(--danger);
+  border: 1px solid color-mix(in srgb, var(--danger) 40%, var(--line));
+}
+
 .empty {
   text-align: center;
   padding: 2.5rem 0.5rem 1rem;

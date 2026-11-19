@@ -1031,7 +1031,16 @@ function renderCard(item) {
     rememberDialogFocus({ itemId: item.id });
     location.hash = '#/edit/' + encodeURIComponent(item.id);
   });
-  actions.append(edit);
+  var remove = document.createElement('button');
+  remove.type = 'button';
+  remove.className = 'ghost card-delete';
+  remove.textContent = '刪除';
+  remove.addEventListener('click', function (event) {
+    event.stopPropagation();
+    rememberDialogFocus({ itemId: item.id });
+    openConfirm(item);
+  });
+  actions.append(edit, remove);
   main.append(actions);
   top.append(renderThumb(item), main);
   card.append(top);
